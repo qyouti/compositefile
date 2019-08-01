@@ -1,3 +1,19 @@
+/*
+ * Copyright 2019 Leeds Beckett University.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.qyouti.compositefile;
 
 
@@ -13,11 +29,6 @@ import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.compress.archivers.tar.TarConstants;
 
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 
 /**
  *
@@ -51,7 +62,7 @@ public class CompositeFile
     private final boolean exists;
     private InputStream currentinputstream = null;
     private OutputStream currentoutputstream = null;
-    private TarArchiveOutputStream tos;
+    private SeekableTarArchiveOutputStream tos;
     private ComponentEntry newentry;
         
     private HashMap<String,ComponentEntry> componentmap = new HashMap<>();
@@ -88,6 +99,8 @@ public class CompositeFile
         }
     }
     
+    
+    
     private void readComponentMap() throws IOException
     {
         componentmap.clear();
@@ -96,12 +109,20 @@ public class CompositeFile
         TarArchiveInputStream tis = new TarArchiveInputStream( ris );
         TarArchiveEntry entry;
         long pos = raf.getFilePointer();
+        long size, extra, block;
         while ( (entry=tis.getNextTarEntry()) != null )
         {
             System.out.println( "File entry: " + entry.getName() + "  length = " + entry.getSize() );
             // later entry will overwrite older entries - appropriately
             componentmap.put( entry.getName(), new ComponentEntry( pos, entry ) );
-            pos = raf.getFilePointer();
+            
+            // need to add entry size to find pointer to next entry
+            size = entry.getSize();
+            block = tis.getRecordSize();
+            extra = 0;
+            if ( size > 0 && (size % block) != 0 )
+              extra = block - (size % block);
+            pos = raf.getFilePointer() + size + extra;
         }
         nextnewentry = pos;
         tis.close();
@@ -119,7 +140,7 @@ public class CompositeFile
         RandomInputStream ris = new RandomInputStream( raf );
         TarArchiveInputStream tis = new TarArchiveInputStream( ris );
         tis.getNextTarEntry();
-        currentinputstream = ris;
+        currentinputstream = tis;
         return currentinputstream;
     }    
     
@@ -146,9 +167,10 @@ public class CompositeFile
 
         raf.seek( newentry.pos );
         RandomOutputStream ros = new RandomOutputStream( raf );
-        tos = new TarArchiveOutputStream( ros );
+        tos = new SeekableTarArchiveOutputStream( ros );
         tos.putArchiveEntry(newentry.tararchiveentry);
-        currentoutputstream = tos;
+        newentry.datapos = raf.getFilePointer();
+        currentoutputstream = new TarOutputWrapper( tos );
         return currentoutputstream;
     }    
     
@@ -158,7 +180,8 @@ public class CompositeFile
         long pos, size;
         currentoutputstream = null;        
         pos = raf.getFilePointer();
-        size = pos - nextnewentry;
+        size = pos - newentry.datapos;
+        System.out.println( "Wrote 0x" + Long.toHexString(size) + " = " + size + " bytes" );
         newentry.tararchiveentry.setSize(size);
         tos.closeArchiveEntry();              // pads to end of 512 byte block
         nextnewentry = raf.getFilePointer();  // pos for next component
@@ -167,12 +190,55 @@ public class CompositeFile
         // now update the header with correct size
         raf.seek( newentry.pos );
         RandomOutputStream ros = new RandomOutputStream( raf );
-        tos = new TarArchiveOutputStream( ros );
+        tos = new SeekableTarArchiveOutputStream( ros );
         tos.putArchiveEntry( newentry.tararchiveentry );
     }
     
     
-    
+    class TarOutputWrapper extends OutputStream
+    {
+      SeekableTarArchiveOutputStream tos;
+
+      public TarOutputWrapper(SeekableTarArchiveOutputStream tos)
+      {
+        this.tos = tos;
+      }
+
+      @Override
+      public void close()
+              throws IOException
+      {
+        closeOutputStream();
+      }
+
+      @Override
+      public void flush()
+              throws IOException
+      {
+        tos.flush(); //To change body of generated methods, choose Tools | Templates.
+      }
+
+      @Override
+      public void write(byte[] b, int off, int len)
+              throws IOException
+      {
+        tos.write(b, off, len); //To change body of generated methods, choose Tools | Templates.
+      }
+
+      @Override
+      public void write(byte[] b)
+              throws IOException
+      {
+        tos.write(b); //To change body of generated methods, choose Tools | Templates.
+      }
+
+      @Override
+      public void write(int b)
+              throws IOException
+      {
+        tos.write(b);
+      }
+    }
     
     class RandomOutputStream extends OutputStream
     {
@@ -194,7 +260,6 @@ public class CompositeFile
         @Override
         public void close() throws IOException
         {
-            closeOutputStream();
             dead=true;
         }
 
@@ -305,6 +370,7 @@ public class CompositeFile
     class ComponentEntry
     {
         long pos;
+        long datapos = -1L;
         TarArchiveEntry tararchiveentry;
 
         public ComponentEntry(long pos, TarArchiveEntry tararchiveentry)
