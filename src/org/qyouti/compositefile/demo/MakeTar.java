@@ -42,7 +42,7 @@ public class MakeTar
         try
         {
             OutputStream out;
-            File file = new File( "mydata2.tar" );
+            File file = new File( "demo/mydata2.tar" );
             
             CompositeFile compfile = CompositeFile.getCompositeFile(file);
             out = compfile.getOutputStream("bigdatafile.bin",false);

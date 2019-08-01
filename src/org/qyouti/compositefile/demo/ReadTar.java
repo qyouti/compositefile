@@ -39,10 +39,10 @@ public class ReadTar
     {
       int x, i;
       InputStream in;
-      File file = new File("mydata2.tar");
+      File file = new File("demo/mydata2.tar");
 
       CompositeFile compfile = CompositeFile.getCompositeFile(file);
-      in=compfile.getInputStream("little1.xml");
+      in=compfile.getInputStream("little2.xml");
       for ( i=0; (x = in.read()) >= 0; i++ )
       {
         System.out.println( Integer.toHexString(i) + "  :  " + Integer.toHexString(x) );

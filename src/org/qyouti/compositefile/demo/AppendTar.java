@@ -41,10 +41,11 @@ public class AppendTar
         try
         {
             OutputStream out;
-            File file = new File( "mydata2.tar" );
+            File file = new File( "demo/mydata2.tar" );
             
             CompositeFile compfile = CompositeFile.getCompositeFile(file);
-            out = compfile.getOutputStream("little2.xml",false);
+            out = compfile.getOutputStream("little2.xml",true);
+            out.write(buffer);
             out.write(buffer);
             out.close();
             
