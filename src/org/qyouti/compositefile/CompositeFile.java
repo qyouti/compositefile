@@ -178,16 +178,20 @@ public class CompositeFile
     synchronized void closeOutputStream() throws IOException
     {   
         long pos, size;
-        currentoutputstream = null;        
+        currentoutputstream = null;
+        tos.flush();
         pos = raf.getFilePointer();
-        size = pos - newentry.datapos;
-        System.out.println( "Wrote 0x" + Long.toHexString(size) + " = " + size + " bytes" );
-        newentry.tararchiveentry.setSize(size);
         tos.closeArchiveEntry();              // pads to end of 512 byte block
+        size = tos.getEntrySize();
+        System.out.println( "            Wrote 0x" + Long.toHexString(size) + " = " + size + " bytes" );
+
         nextnewentry = raf.getFilePointer();  // pos for next component
+        System.out.println( "Next new entry at 0x" + Long.toHexString(nextnewentry) );
         tos.close();                          // adds two blocks of zeros
+        System.out.println( "           Now at 0x" + Long.toHexString(raf.getFilePointer()) );
         
         // now update the header with correct size
+        newentry.tararchiveentry.setSize(size);
         raf.seek( newentry.pos );
         RandomOutputStream ros = new RandomOutputStream( raf );
         tos = new SeekableTarArchiveOutputStream( ros );

@@ -58,28 +58,21 @@ public class Encrypt
     
     try
     {
-      File filein = new File("demo/test.txt");
-      File fileout = new File("demo/test.txt.gpg");
-      OutputStream fileoutput = new FileOutputStream(fileout);
-      byte[] buffer = new byte[0x4000];
+      File file = new File("demo/test.txt.gpg");
+      OutputStream fileoutput = new FileOutputStream(file);
 
-      PGPEncryptedDataGenerator encGen = new PGPEncryptedDataGenerator(new JcePGPDataEncryptorBuilder(PGPEncryptedData.CAST5)
+      PGPEncryptedDataGenerator encryptiongen = new PGPEncryptedDataGenerator(new JcePGPDataEncryptorBuilder(PGPEncryptedData.CAST5)
               .setWithIntegrityPacket(true).setSecureRandom(new SecureRandom()).setProvider("BC"));
-      encGen.addMethod(new JcePBEKeyEncryptionMethodGenerator("silly".toCharArray()).setProvider("BC"));
-      OutputStream encryptedoutput = encGen.open(fileoutput, buffer);
-      PGPLiteralDataGenerator lData = new PGPLiteralDataGenerator();
-      PGPCompressedDataGenerator comData = new PGPCompressedDataGenerator(CompressionAlgorithmTags.ZIP);
+      encryptiongen.addMethod(new JcePBEKeyEncryptionMethodGenerator("silly".toCharArray()).setProvider("BC"));
+      OutputStream encryptedoutput = encryptiongen.open(fileoutput, new byte[1 << 16]);
+      PGPLiteralDataGenerator literalgen = new PGPLiteralDataGenerator();
+      PGPCompressedDataGenerator compressiongen = new PGPCompressedDataGenerator(CompressionAlgorithmTags.ZIP);
+      OutputStream literalout = literalgen.open(compressiongen.open(encryptedoutput), PGPLiteralData.BINARY, "test.txt", new Date(System.currentTimeMillis()), new byte[1 << 16] );
       
-      PGPUtil.writeFileToLiteralData(comData.open(encryptedoutput), PGPLiteralData.BINARY, filein, new byte[1 << 16]);
+      literalout.write("The spicy green turnip ran through the silly field.".getBytes());
       
-      //OutputStream literaloutput = lData.open(fileoutput,  PGPLiteralData.BINARY, "test.txt", new Date(System.currentTimeMillis()), new byte[0x4000]);
-      //OutputStream out = comData.open(literaloutput);
-      //for ( i=0; i<2; i++ )
-      //  out.write(data);
-      
-      comData.close();
-      //encryptedoutput.close();
-      //literaloutput.close();
+      literalout.close();
+      compressiongen.close();
       encryptedoutput.close();
     }
     catch (IOException ex)

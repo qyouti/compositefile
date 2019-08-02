@@ -20,9 +20,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.SecureRandom;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.bouncycastle.bcpg.CompressionAlgorithmTags;
+import org.bouncycastle.openpgp.PGPCompressedDataGenerator;
 import org.bouncycastle.openpgp.PGPEncryptedData;
 import org.bouncycastle.openpgp.PGPEncryptedDataGenerator;
 import org.bouncycastle.openpgp.PGPException;
@@ -38,28 +41,29 @@ import org.bouncycastle.openpgp.operator.jcajce.JcePGPDataEncryptorBuilder;
 public class EncryptedCompositeFile
         extends CompositeFile
 {
-    static final HashMap<String,EncryptedCompositeFile> ecache = new HashMap<>();
-    
-    public static EncryptedCompositeFile getCompositeFile( File file ) throws IOException
+
+  static final HashMap<String, EncryptedCompositeFile> ecache = new HashMap<>();
+
+  public static EncryptedCompositeFile getCompositeFile(File file)
+          throws IOException
+  {
+    String canonical = file.getCanonicalPath();
+    EncryptedCompositeFile cf;
+    synchronized (ecache)
     {
-        String canonical = file.getCanonicalPath();
-        EncryptedCompositeFile cf;
-        synchronized ( ecache )
-        {
-            cf = ecache.get(canonical);
-            if ( cf == null )
-            {
-                cf = new EncryptedCompositeFile( canonical, file );
-                ecache.put( canonical, cf );
-            }
-        }
-        return cf;
+      cf = ecache.get(canonical);
+      if (cf == null)
+      {
+        cf = new EncryptedCompositeFile(canonical, file);
+        ecache.put(canonical, cf);
+      }
     }
-    
-    
-  String passphrase = "sillypassword";
-  OutputStream encryptedoutput=null;
-          
+    return cf;
+  }
+
+  char[] passphrase = "sillypassword".toCharArray();
+  //OutputStream encryptedoutput = null;
+
   public EncryptedCompositeFile(String canonical, File file)
           throws IOException
   {
@@ -71,22 +75,24 @@ public class EncryptedCompositeFile
           throws IOException
   {
     OutputStream taroutput = super.getOutputStream(name, replace);
-    byte[] buffer = new byte[0x400];
-    
-    PGPEncryptedDataGenerator encGen = new PGPEncryptedDataGenerator(new JcePGPDataEncryptorBuilder(PGPEncryptedData.CAST5)
+
+    PGPEncryptedDataGenerator encryptiongen = new PGPEncryptedDataGenerator(new JcePGPDataEncryptorBuilder(PGPEncryptedData.CAST5)
             .setWithIntegrityPacket(true).setSecureRandom(new SecureRandom()).setProvider("BC"));
-    encGen.addMethod(new JcePBEKeyEncryptionMethodGenerator(passphrase.toCharArray()).setProvider("BC"));
+    encryptiongen.addMethod(new JcePBEKeyEncryptionMethodGenerator(passphrase).setProvider("BC"));
+    OutputStream encryptedoutput;
     try
     {
-      encryptedoutput = encGen.open(taroutput, buffer);
+      encryptedoutput = encryptiongen.open(taroutput, new byte[1 << 16]);
     }
     catch (PGPException ex)
     {
-      Logger.getLogger(EncryptedCompositeFile.class.getName()).log(Level.SEVERE, null, ex);
-      throw new IOException( "Unable to initialise encryption of file", ex );
+      throw new IOException("Unable to initialise encrypted output.", ex);
     }
-    
-    return new EncryptedOutputWrapper( taroutput, encryptedoutput );
+    PGPLiteralDataGenerator literalgen = new PGPLiteralDataGenerator();
+    PGPCompressedDataGenerator compressiongen = new PGPCompressedDataGenerator(CompressionAlgorithmTags.ZIP);
+    OutputStream literalout = literalgen.open(compressiongen.open(encryptedoutput), PGPLiteralData.BINARY, name, new Date(System.currentTimeMillis()), new byte[1 << 16]);
+
+    return new EncryptedOutputWrapper(taroutput, encryptedoutput, compressiongen, literalout);
   }
 
   @Override
@@ -116,45 +122,54 @@ public class EncryptedCompositeFile
     super.close();
   }
 
-  
-  class EncryptedOutputWrapper extends OutputStream
+  class EncryptedOutputWrapper
+          extends OutputStream
   {
+
     OutputStream taroutput;
     OutputStream encryptedoutput;
+    PGPCompressedDataGenerator compressiongen;
+    OutputStream literaloutput;
 
-    public EncryptedOutputWrapper(OutputStream taroutput, OutputStream encryptedoutput)
+    public EncryptedOutputWrapper(OutputStream taroutput, OutputStream encryptedoutput,
+            PGPCompressedDataGenerator compressiongen, OutputStream literaloutput)
     {
       this.taroutput = taroutput;
       this.encryptedoutput = encryptedoutput;
-    }    
-      
+      this.compressiongen = compressiongen;
+      this.literaloutput = encryptedoutput;
+    }
+
     @Override
     public void close()
             throws IOException
     {
-      encryptedoutput.close(); // this doesn't close taroutput it just flushes out openpgp data
-      taroutput.close();       // now close the taroutput
+      literaloutput.close();   // complete the literal data packet
+      compressiongen.close();  // complete the enclosing compression packet
+      encryptedoutput.close(); // complete the enclosing encryption packet
+
+      taroutput.close();       // now close the taroutput which encloses the whole lot.
     }
 
     @Override
     public void flush()
             throws IOException
     {
-      encryptedoutput.flush(); //To change body of generated methods, choose Tools | Templates.
+      encryptedoutput.flush();
     }
 
     @Override
     public void write(byte[] b, int off, int len)
             throws IOException
     {
-      encryptedoutput.write(b, off, len); //To change body of generated methods, choose Tools | Templates.
+      encryptedoutput.write(b, off, len);
     }
 
     @Override
     public void write(byte[] b)
             throws IOException
     {
-      encryptedoutput.write(b); //To change body of generated methods, choose Tools | Templates.
+      encryptedoutput.write(b, 0, b.length);
     }
 
     @Override
@@ -163,10 +178,7 @@ public class EncryptedCompositeFile
     {
       encryptedoutput.write(b);
     }
-    
+
   }
-  
-  
-  
-  
+
 }

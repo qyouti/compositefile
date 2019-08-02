@@ -395,6 +395,15 @@ public class SeekableTarArchiveOutputStream extends ArchiveOutputStream {
     }
 
     /**
+     * Call after closeArchiveEntry() to find out how many bytes were written.
+     * @return Number of bytes written.
+     */
+    public long getEntrySize()
+    {
+      return currBytes;
+    }
+    
+    /**
      * Close an entry. This method MUST be called for all file entries that contain data. The reason
      * is that we must buffer data written to the stream in order to satisfy the buffer's record
      * based writes. Thus, there may be data fragments still being assembled that must be written to
