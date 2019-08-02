@@ -63,14 +63,14 @@ public class Encrypt
       OutputStream fileoutput = new FileOutputStream(fileout);
       byte[] buffer = new byte[0x4000];
 
-      //PGPEncryptedDataGenerator encGen = new PGPEncryptedDataGenerator(new JcePGPDataEncryptorBuilder(PGPEncryptedData.CAST5)
-      //        .setWithIntegrityPacket(true).setSecureRandom(new SecureRandom()).setProvider("BC"));
-      //encGen.addMethod(new JcePBEKeyEncryptionMethodGenerator("sillypassword".toCharArray()).setProvider("BC"));
-      //OutputStream encryptedoutput = encGen.open(fileoutput, buffer);
+      PGPEncryptedDataGenerator encGen = new PGPEncryptedDataGenerator(new JcePGPDataEncryptorBuilder(PGPEncryptedData.CAST5)
+              .setWithIntegrityPacket(true).setSecureRandom(new SecureRandom()).setProvider("BC"));
+      encGen.addMethod(new JcePBEKeyEncryptionMethodGenerator("silly".toCharArray()).setProvider("BC"));
+      OutputStream encryptedoutput = encGen.open(fileoutput, buffer);
       PGPLiteralDataGenerator lData = new PGPLiteralDataGenerator();
       PGPCompressedDataGenerator comData = new PGPCompressedDataGenerator(CompressionAlgorithmTags.ZIP);
       
-      PGPUtil.writeFileToLiteralData(comData.open(fileoutput), PGPLiteralData.BINARY, filein, new byte[1 << 16]);
+      PGPUtil.writeFileToLiteralData(comData.open(encryptedoutput), PGPLiteralData.BINARY, filein, new byte[1 << 16]);
       
       //OutputStream literaloutput = lData.open(fileoutput,  PGPLiteralData.BINARY, "test.txt", new Date(System.currentTimeMillis()), new byte[0x4000]);
       //OutputStream out = comData.open(literaloutput);
@@ -80,9 +80,13 @@ public class Encrypt
       comData.close();
       //encryptedoutput.close();
       //literaloutput.close();
-      fileoutput.close();
+      encryptedoutput.close();
     }
     catch (IOException ex)
+    {
+      Logger.getLogger(Encrypt.class.getName()).log(Level.SEVERE, null, ex);
+    }
+    catch (PGPException ex)
     {
       Logger.getLogger(Encrypt.class.getName()).log(Level.SEVERE, null, ex);
     }
