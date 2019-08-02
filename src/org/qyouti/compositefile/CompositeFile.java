@@ -144,7 +144,7 @@ public class CompositeFile
         return currentinputstream;
     }    
     
-    private synchronized void closeInputStream()
+    synchronized void closeInputStream()
     {
         currentinputstream = null;        
     }
@@ -175,7 +175,7 @@ public class CompositeFile
     }    
     
     
-    private synchronized void closeOutputStream() throws IOException
+    synchronized void closeOutputStream() throws IOException
     {   
         long pos, size;
         currentoutputstream = null;        
