@@ -137,13 +137,14 @@ public class EncryptedCompositeFile
       this.taroutput = taroutput;
       this.encryptedoutput = encryptedoutput;
       this.compressiongen = compressiongen;
-      this.literaloutput = encryptedoutput;
+      this.literaloutput = literaloutput;
     }
 
     @Override
     public void close()
             throws IOException
     {
+      flush();
       literaloutput.close();   // complete the literal data packet
       compressiongen.close();  // complete the enclosing compression packet
       encryptedoutput.close(); // complete the enclosing encryption packet
@@ -155,28 +156,28 @@ public class EncryptedCompositeFile
     public void flush()
             throws IOException
     {
-      encryptedoutput.flush();
+      literaloutput.flush();
     }
 
     @Override
     public void write(byte[] b, int off, int len)
             throws IOException
     {
-      encryptedoutput.write(b, off, len);
+      literaloutput.write(b, off, len);
     }
 
     @Override
     public void write(byte[] b)
             throws IOException
     {
-      encryptedoutput.write(b, 0, b.length);
+      literaloutput.write(b, 0, b.length);
     }
 
     @Override
     public void write(int b)
             throws IOException
     {
-      encryptedoutput.write(b);
+      literaloutput.write(b);
     }
 
   }
