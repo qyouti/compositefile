@@ -13,19 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.qyouti.compositefile.demo;
-
 
 import java.io.File;
 import java.io.OutputStream;
 import java.security.Security;
 import java.util.Arrays;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.qyouti.compositefile.CompositeFile;
+import org.bouncycastle.openpgp.PGPPrivateKey;
+import org.bouncycastle.openpgp.PGPPublicKey;
 import org.qyouti.compositefile.EncryptedCompositeFile;
-
-
 
 /**
  *
@@ -34,39 +31,52 @@ import org.qyouti.compositefile.EncryptedCompositeFile;
 public class MakeEncryptedTar
 {
 
-    /**
-     * @param args the command line arguments
-     */
-    public static void main(String[] args)
+  /**
+   * @param args the command line arguments
+   */
+  public static void main(String[] args)
+  {
+    int i;
+    byte[] buffer = new byte[1024 * 8];
+    Arrays.fill(buffer, (byte) 0x55);
+
+    Security.addProvider(new BouncyCastleProvider());
+
+    try
     {
-        int i;
-        byte[] buffer = new byte[1024*8];
-        Arrays.fill(buffer, (byte)0x55 );
-        
-        Security.addProvider(new BouncyCastleProvider());
-        
-        try
-        {
-            OutputStream out;
-            File file = new File( "demo/mydataenc.tar" );
-            
-            EncryptedCompositeFile compfile = EncryptedCompositeFile.getCompositeFile(file);
-            out = compfile.getOutputStream("bigdatafile.bin.gpg",false);
-            for ( i=0; i<2; i++ )
-              out.write(buffer);
-            out.close();
-            
+      File file = new File("demo/mydataenc.tar");
+      if ( file.exists() )
+        file.delete();
+      
+      File aliceseckeyfile = new File( "demo/alice_secring.gpg" );
+      File alicepubkeyfile = new File( "demo/alice_pubring.gpg" );
+      
+      KeyUtil ku = new KeyUtil( aliceseckeyfile, alicepubkeyfile );
+      PGPPrivateKey  prikey = ku.getPrivateKey("alice", "alice".toCharArray() );
+      PGPPublicKey  pubkey = ku.getPublicKey( "alice" );
+      PGPPublicKey  otherpubkey = ku.getPublicKey( "bob" );
+      
+      OutputStream out;
+
+      EncryptedCompositeFile compfile = EncryptedCompositeFile.getCompositeFile(file,prikey,"alice");
+      compfile.addPublicKey( pubkey, "alice" );
+      compfile.addPublicKey( otherpubkey, "bob" );
+      out = compfile.getOutputStream("bigdatafile.bin.gpg", false);
+      for (i = 0; i < 2; i++)
+      {
+        out.write(buffer);
+      }
+      out.close();
+
 //            out = compfile.getOutputStream("little1.xml",false);
 //            out.write(buffer);
 //            out.close();
-            
-            compfile.close();
-            
-        }
-        catch (Exception ex)
-        {
-            ex.printStackTrace();
-        }
+      compfile.close();
+
+    } catch (Exception ex)
+    {
+      ex.printStackTrace();
     }
-    
+  }
+
 }

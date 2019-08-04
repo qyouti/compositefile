@@ -65,7 +65,7 @@ public class CompositeFile
     private SeekableTarArchiveOutputStream tos;
     private ComponentEntry newentry;
         
-    private HashMap<String,ComponentEntry> componentmap = new HashMap<>();
+    HashMap<String,ComponentEntry> componentmap = new HashMap<>();
     private long nextnewentry=0L;
     
     CompositeFile( String canonical, File file ) throws IOException
