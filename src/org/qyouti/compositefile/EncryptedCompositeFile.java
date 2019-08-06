@@ -24,6 +24,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
+import java.security.PrivateKey;
 import java.security.SecureRandom;
 import java.util.Date;
 import java.util.HashMap;
@@ -90,14 +91,37 @@ public class EncryptedCompositeFile
 
   int passphrasestatus = PASS_STATUS_BLANK;
   char[] passphrase = null;
-  PGPPrivateKey key;
+  String keyalias;
+  PGPPrivateKey pgpkey;
+  String jcaprovidername;
+  PrivateKey jcakey;
+  long jcakeyid;
+  
   //OutputStream encryptedoutput = null;
 
+  public EncryptedCompositeFile(String canonical, File file, String providername, PrivateKey key, long id, String keyalias)
+          throws IOException, NoSuchProviderException
+  {
+    super(canonical, file);
+    this.jcaprovidername = providername;
+    this.keyalias = keyalias;
+    this.jcakey = key;
+    this.jcakeyid = id;
+    initPrivateKey();
+  }
+  
   public EncryptedCompositeFile(String canonical, File file, PGPPrivateKey key, String keyalias)
           throws IOException, NoSuchProviderException
   {
     super(canonical, file);
-    this.key = key;
+    this.keyalias = keyalias;
+    this.pgpkey = key;    
+    initPrivateKey();
+  }
+  
+
+  private void initPrivateKey() throws IOException, NoSuchProviderException
+  {
     String name;
     for (ComponentEntry entry : componentmap.values())
     {
@@ -111,15 +135,15 @@ public class EncryptedCompositeFile
         if (name.equals("password_" + keyalias + ".gpg"))
         {
           InputStream in = super.getInputStream(name);
-          passphrase = decryptPassphrase(in, key);
+          passphrase = decryptPassphrase(in);
           in.close();
           System.out.println("Password is " + new String(passphrase));
           passphrasestatus = PASS_STATUS_KNOWN;
         }
       }
-    }
+    }    
   }
-
+  
   @Override
   public synchronized OutputStream getOutputStream(String name, boolean replace)
           throws IOException
@@ -241,12 +265,14 @@ public class EncryptedCompositeFile
     return null;
   }
 
-  private static char[] decryptPassphrase(
-          InputStream in,
-          PGPPrivateKey sKeyParam)
+  private char[] decryptPassphrase( InputStream in )
           throws IOException, NoSuchProviderException
   {
-    PGPPrivateKey sKey = null;
+    long keyid;
+    if (  this.pgpkey != null )
+      keyid = this.pgpkey.getKeyID();
+    else
+      keyid = this.jcakeyid;
     String pw = null;
     in = PGPUtil.getDecoderStream(in);
 
@@ -267,26 +293,30 @@ public class EncryptedCompositeFile
       }
 
       //
-      // find the secret key
+      // find the secret pgpkey
       //
       Iterator it = enc.getEncryptedDataObjects();
       PGPPublicKeyEncryptedData pbe = null;
-      while (sKey == null && it.hasNext())
+      boolean found=false;
+      while ( !found && it.hasNext())
       {
         pbe = (PGPPublicKeyEncryptedData) it.next();
-        System.out.println(pbe.getKeyID() + " == " + sKeyParam.getKeyID());
-        if (pbe.getKeyID() == sKeyParam.getKeyID())
-        {
-          sKey = sKeyParam;
-        }
+        System.out.println( pbe.getKeyID() + " == " + keyid );
+        if ( pbe.getKeyID() == keyid )
+          found = true;
       }
 
-      if (sKey == null)
+      if ( !found )
       {
         throw new IllegalArgumentException("secret key for message not found.");
       }
 
-      InputStream clear = pbe.getDataStream(new JcePublicKeyDataDecryptorFactoryBuilder().setProvider("BC").build(sKey));
+      InputStream clear;
+      if ( this.pgpkey != null )
+        clear = pbe.getDataStream(new JcePublicKeyDataDecryptorFactoryBuilder().setProvider("BC").build(pgpkey));
+      else
+        clear = pbe.getDataStream(new JcePublicKeyDataDecryptorFactoryBuilder().setProvider(jcaprovidername).build(jcakey));
+      
       JcaPGPObjectFactory plainFact = new JcaPGPObjectFactory(clear);
       Object message = plainFact.nextObject();
 
