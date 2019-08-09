@@ -15,23 +15,23 @@
  */
 package org.qyouti.compositefile;
 
-import java.io.BufferedOutputStream;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
+import java.security.Provider;
 import java.security.SecureRandom;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.bouncycastle.bcpg.ArmoredOutputStream;
 import org.bouncycastle.bcpg.CompressionAlgorithmTags;
 import org.bouncycastle.openpgp.PGPCompressedData;
 import org.bouncycastle.openpgp.PGPCompressedDataGenerator;
@@ -46,10 +46,8 @@ import org.bouncycastle.openpgp.PGPPBEEncryptedData;
 import org.bouncycastle.openpgp.PGPPrivateKey;
 import org.bouncycastle.openpgp.PGPPublicKey;
 import org.bouncycastle.openpgp.PGPPublicKeyEncryptedData;
-import org.bouncycastle.openpgp.PGPSecretKeyRingCollection;
 import org.bouncycastle.openpgp.PGPUtil;
 import org.bouncycastle.openpgp.jcajce.JcaPGPObjectFactory;
-import org.bouncycastle.openpgp.operator.jcajce.JcaKeyFingerprintCalculator;
 import org.bouncycastle.openpgp.operator.jcajce.JcaPGPDigestCalculatorProviderBuilder;
 import org.bouncycastle.openpgp.operator.jcajce.JcePBEDataDecryptorFactoryBuilder;
 import org.bouncycastle.openpgp.operator.jcajce.JcePBEKeyEncryptionMethodGenerator;
@@ -85,6 +83,23 @@ public class EncryptedCompositeFile
     return cf;
   }
 
+  public static EncryptedCompositeFile getCompositeFile( File file, Provider provider, PrivateKey key, long id, String keyalias )
+          throws IOException, NoSuchProviderException
+  {
+    String canonical = file.getCanonicalPath();
+    EncryptedCompositeFile cf;
+    synchronized (ecache)
+    {
+      cf = ecache.get(canonical);
+      if (cf == null)
+      {
+        cf = new EncryptedCompositeFile(canonical, file, provider, key, id, keyalias);
+        ecache.put(canonical, cf);
+      }
+    }
+    return cf;
+  }
+
   static final private int PASS_STATUS_BLANK = 0;
   static final private int PASS_STATUS_UNKNOWN = 1;
   static final private int PASS_STATUS_KNOWN = 2;
@@ -93,17 +108,17 @@ public class EncryptedCompositeFile
   char[] passphrase = null;
   String keyalias;
   PGPPrivateKey pgpkey;
-  String jcaprovidername;
+  Provider jcaprovider;
   PrivateKey jcakey;
   long jcakeyid;
   
   //OutputStream encryptedoutput = null;
 
-  public EncryptedCompositeFile(String canonical, File file, String providername, PrivateKey key, long id, String keyalias)
+  public EncryptedCompositeFile(String canonical, File file, Provider provider, PrivateKey key, long id, String keyalias)
           throws IOException, NoSuchProviderException
   {
     super(canonical, file);
-    this.jcaprovidername = providername;
+    this.jcaprovider = provider;
     this.keyalias = keyalias;
     this.jcakey = key;
     this.jcakeyid = id;
@@ -244,7 +259,7 @@ public class EncryptedCompositeFile
 
       PGPLiteralDataGenerator lData = new PGPLiteralDataGenerator();
       lData.open(literal, PGPLiteralData.BINARY, "passphrase.txt", pw.length, new Date(System.currentTimeMillis())).write(pw);
-
+    
       PGPEncryptedDataGenerator encGen = new PGPEncryptedDataGenerator(
               new JcePGPDataEncryptorBuilder(PGPEncryptedData.CAST5).setWithIntegrityPacket(withIntegrityCheck).setSecureRandom(new SecureRandom()).setProvider("BC"));
       encGen.addMethod(new JcePublicKeyKeyEncryptionMethodGenerator(encKey).setProvider("BC"));
@@ -254,6 +269,7 @@ public class EncryptedCompositeFile
       cOut.close();
       System.out.println("Encrypted password length = " + encrypted.size());
       return encrypted.toByteArray();
+
     } catch (PGPException e)
     {
       System.err.println(e);
@@ -261,6 +277,10 @@ public class EncryptedCompositeFile
       {
         e.getUnderlyingException().printStackTrace();
       }
+    }
+    catch (Exception ex)
+    {
+      Logger.getLogger(EncryptedCompositeFile.class.getName()).log(Level.SEVERE, null, ex);
     }
     return null;
   }
@@ -292,16 +312,16 @@ public class EncryptedCompositeFile
         enc = (PGPEncryptedDataList) pgpF.nextObject();
       }
 
-      //
-      // find the secret pgpkey
-      //
+      /*
+      Find the secret pgpkey that matches our private key
+      */
       Iterator it = enc.getEncryptedDataObjects();
       PGPPublicKeyEncryptedData pbe = null;
       boolean found=false;
       while ( !found && it.hasNext())
       {
         pbe = (PGPPublicKeyEncryptedData) it.next();
-        System.out.println( pbe.getKeyID() + " == " + keyid );
+        System.out.println( "Is " + Long.toHexString(pbe.getKeyID()) + " == " + Long.toHexString(keyid) + " ?");
         if ( pbe.getKeyID() == keyid )
           found = true;
       }
@@ -315,7 +335,7 @@ public class EncryptedCompositeFile
       if ( this.pgpkey != null )
         clear = pbe.getDataStream(new JcePublicKeyDataDecryptorFactoryBuilder().setProvider("BC").build(pgpkey));
       else
-        clear = pbe.getDataStream(new JcePublicKeyDataDecryptorFactoryBuilder().setProvider(jcaprovidername).build(jcakey));
+        clear = pbe.getDataStream(new JcePublicKeyDataDecryptorFactoryBuilder().setProvider(jcaprovider).setContentProvider("BC").build(jcakey));
       
       JcaPGPObjectFactory plainFact = new JcaPGPObjectFactory(clear);
       Object message = plainFact.nextObject();

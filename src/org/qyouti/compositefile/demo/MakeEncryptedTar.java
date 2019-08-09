@@ -55,12 +55,14 @@ public class MakeEncryptedTar
       PGPPrivateKey  prikey = ku.getPrivateKey("alice", "alice".toCharArray() );
       PGPPublicKey  pubkey = ku.getPublicKey( "alice" );
       PGPPublicKey  otherpubkey = ku.getPublicKey( "bob" );
-      
+      PGPPublicKey  pubkeythree = ku.getPublicKey( "charlie" );
+      System.out.println( "Charlie's public key ID = " + Long.toHexString( pubkeythree.getKeyID() ) );
       OutputStream out;
 
       EncryptedCompositeFile compfile = EncryptedCompositeFile.getCompositeFile(file,prikey,"alice");
       compfile.addPublicKey( pubkey, "alice" );
       compfile.addPublicKey( otherpubkey, "bob" );
+      compfile.addPublicKey( pubkeythree, "charlie" );
       out = compfile.getOutputStream("bigdatafile.bin.gpg", false);
       for (i = 0; i < 2; i++)
       {

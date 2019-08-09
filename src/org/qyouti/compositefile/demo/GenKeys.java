@@ -54,16 +54,20 @@ import org.bouncycastle.openpgp.operator.jcajce.JcePBESecretKeyEncryptorBuilder;
 public class GenKeys
 {
 
-  PGPSecretKeyRingCollection[] secringcoll = new PGPSecretKeyRingCollection[2];
-  PGPPublicKeyRingCollection[] pubringcoll = new PGPPublicKeyRingCollection[2];
+  PGPSecretKeyRingCollection[] secringcoll = new PGPSecretKeyRingCollection[3];
+  PGPPublicKeyRingCollection[] pubringcoll = new PGPPublicKeyRingCollection[3];
   
+  String[] aliases = { "alice", "bob", "charlie" };
   
   private void createKeyRings() throws IOException, PGPException
   {
     secringcoll[0] = new PGPSecretKeyRingCollection( new ArrayList<>() );
     secringcoll[1] = new PGPSecretKeyRingCollection( new ArrayList<>() );
+    secringcoll[2] = null;
+    
     pubringcoll[0] = new PGPPublicKeyRingCollection( new ArrayList<>() );
     pubringcoll[1] = new PGPPublicKeyRingCollection( new ArrayList<>() );    
+    pubringcoll[2] = new PGPPublicKeyRingCollection( new ArrayList<>() );    
   }
   
   
@@ -71,23 +75,19 @@ public class GenKeys
   {
     FileOutputStream out;
     
-    out = new FileOutputStream("demo/alice_secring.gpg");
-    secringcoll[0].encode(out);
-    out.close();
-    
-    out = new FileOutputStream("demo/alice_pubring.gpg");
-    pubringcoll[0].encode(out);
-    out.close();
-    
-    out = new FileOutputStream("demo/bob_secring.gpg");
-    secringcoll[1].encode(out);
-    out.close();
-    
-    out = new FileOutputStream("demo/bob_pubring.gpg");
-    pubringcoll[1].encode(out);
-    out.close();
-    
-    
+    for ( int i=0; i<aliases.length; i++ )
+    {
+      if ( secringcoll[i] != null )
+      {
+        out = new FileOutputStream("demo/" + aliases[i] + "_secring.gpg");
+        secringcoll[i].encode(out);
+        out.close();
+      }
+
+      out = new FileOutputStream("demo/" + aliases[i] + "_pubring.gpg");
+      pubringcoll[i].encode(out);
+      out.close();
+    }
   }
   
   
@@ -124,7 +124,9 @@ public class GenKeys
     keylist.add(key);
     PGPPublicKeyRing keyring = new PGPPublicKeyRing(keylist);
     
+    // add secret stuff to own
     secringcoll[secretOut] = PGPSecretKeyRingCollection.addSecretKeyRing( secringcoll[secretOut], secretKeyRing );
+    // add public to all
     for ( int i=0; i<pubringcoll.length; i++ )
       pubringcoll[i] = PGPPublicKeyRingCollection.addPublicKeyRing( pubringcoll[i], keyring );
   }
@@ -139,9 +141,9 @@ public class GenKeys
     
     KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA", "BC");
 
-    kpg.initialize(1024);
+    kpg.initialize(2048);
     KeyPair alicekp = kpg.generateKeyPair();
-    kpg.initialize(1024);
+    kpg.initialize(2048);
     KeyPair bobkp = kpg.generateKeyPair();
 
     exportKeyPair( 0, alicekp, "alice", "alice".toCharArray() );
