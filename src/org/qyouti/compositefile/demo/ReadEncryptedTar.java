@@ -18,7 +18,6 @@ package org.qyouti.compositefile.demo;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.security.NoSuchProviderException;
 import java.security.Security;
 import java.util.logging.Level;
@@ -26,12 +25,10 @@ import java.util.logging.Logger;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openpgp.PGPException;
 import org.bouncycastle.openpgp.PGPPrivateKey;
-import org.bouncycastle.openpgp.PGPPublicKey;
-import org.qyouti.compositefile.CompositeFile;
 import org.qyouti.compositefile.EncryptedCompositeFile;
 
 /**
- *
+ * Bob will read an entry in the demo encrypted composite file that was created by Alice.
  * @author maber01
  */
 public class ReadEncryptedTar
@@ -51,20 +48,27 @@ public class ReadEncryptedTar
       File file = new File("demo/mydataenc.tar");
 
       
-      File aliceseckeyfile = new File( "demo/alice_secring.gpg" );
-      File alicepubkeyfile = new File( "demo/alice_pubring.gpg" );
+      File aliceseckeyfile = new File( "demo/bob_secring.gpg" );
+      File alicepubkeyfile = new File( "demo/bob_pubring.gpg" );
       
       KeyUtil ku = new KeyUtil( aliceseckeyfile, alicepubkeyfile );
-      PGPPrivateKey  prikey = ku.getPrivateKey("alice", "alice".toCharArray() );      
-      EncryptedCompositeFile compfile = EncryptedCompositeFile.getCompositeFile(file,prikey,"alice");
+      PGPPrivateKey  prikey = ku.getPrivateKey("bob", "bob".toCharArray() );      
+      EncryptedCompositeFile compfile = EncryptedCompositeFile.getCompositeFile(file,prikey,"bob");
       
-      in=compfile.getInputStream("bigdatafile.bin.gpg");
+      in=compfile.getInputStream("little.txt.gpg");
+      System.out.print( "0  :  " );
       for ( i=0; (x = in.read()) >= 0; i++ )
       {
-        System.out.println( Integer.toHexString(i) + "  :  " + Integer.toHexString(x) );
+        if ( x>15 )
+          System.out.print( Character.toString((char)x) /*Integer.toHexString(x)*/ );
+        else
+          System.out.print( "[0x" +Integer.toHexString(x) + "]" );
+        if ( i%64 == 63 )
+          System.out.print( "\n" +  Integer.toHexString(i+1) + "  :  " );
       }
       in.close();
       compfile.close();
+      System.out.print( "\n\n" );
     }
     catch (IOException ex)
     {

@@ -19,9 +19,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.math.BigInteger;
-import java.security.Key;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
@@ -29,26 +27,22 @@ import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
 import java.security.Security;
 import java.security.UnrecoverableKeyException;
-import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
-import java.util.Iterator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openpgp.PGPException;
-import org.bouncycastle.openpgp.PGPPrivateKey;
 import org.bouncycastle.openpgp.PGPPublicKey;
 import org.bouncycastle.openpgp.PGPPublicKeyRing;
 import org.bouncycastle.openpgp.PGPPublicKeyRingCollection;
 import org.bouncycastle.openpgp.operator.KeyFingerPrintCalculator;
 import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator;
-import org.bouncycastle.openpgp.operator.jcajce.JcaPGPPrivateKey;
- import org.qyouti.compositefile.CompositeFile;
 import org.qyouti.compositefile.EncryptedCompositeFile;
 
 /**
- *
+ * User Charlie reads an entry in the demo encrypted composite file.
+ * 
  * @author maber01
  */
 public class WindowsReadEncryptedTar
@@ -83,15 +77,21 @@ public class WindowsReadEncryptedTar
       BigInteger serial = c.getSerialNumber();
       long s = serial.longValue();
       System.out.println( "Charlie's private key serial = " + Long.toHexString(s) );
-      //JcaPGPPrivateKey wrappedkey = new JcaPGPPrivateKey( -7249575641428823772L, k );
       
       EncryptedCompositeFile compfile = EncryptedCompositeFile.getCompositeFile(file,keyStore.getProvider(),k,charliepubkey.getKeyID(),"charlie");
       
       in=compfile.getInputStream("bigdatafile.bin.gpg");
+      System.out.print( "0  :  " );
       for ( i=0; (x = in.read()) >= 0; i++ )
       {
-        System.out.println( Integer.toHexString(i) + "  :  " + Integer.toHexString(x) );
+        if ( x>15 )
+          System.out.print( Character.toString((char)x) /*Integer.toHexString(x)*/ );
+        else
+          System.out.print( "[0x" +Integer.toHexString(x) + "]" );
+        if ( i%64 == 63 )
+          System.out.print( "\n" +  Integer.toHexString(i+1) + "  :  " );
       }
+      System.out.println( "\n" );
       in.close();
       compfile.close();
     }

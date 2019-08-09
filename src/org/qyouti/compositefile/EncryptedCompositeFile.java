@@ -57,7 +57,7 @@ import org.bouncycastle.openpgp.operator.jcajce.JcePublicKeyKeyEncryptionMethodG
 import org.bouncycastle.util.io.Streams;
 
 /**
- *
+ * Subclasses CompositeFile to provide encryption for team work.
  * @author maber01
  */
 public class EncryptedCompositeFile
@@ -66,6 +66,17 @@ public class EncryptedCompositeFile
 
   static final HashMap<String, EncryptedCompositeFile> ecache = new HashMap<>();
 
+  /**
+   * Create or retrieve an EncryptedCompositeFile. Must provide the private PGP key and its alias
+   * that will be used to decrypt passwords.
+   * 
+   * @param file The tar file requested.
+   * @param key A PGPPrivateKey which will be used to decrypt component files.
+   * @param keyalias The alias of the key used to identify the right password entry.
+   * @return The EncryptedCompositeFile ready to use.
+   * @throws IOException
+   * @throws NoSuchProviderException 
+   */
   public static EncryptedCompositeFile getCompositeFile(File file, PGPPrivateKey key, String keyalias)
           throws IOException, NoSuchProviderException
   {
@@ -83,6 +94,18 @@ public class EncryptedCompositeFile
     return cf;
   }
 
+  /**
+   * Alternate method giving JCA private key instead of PGP.
+   * 
+   * @param file The tar file requested.
+   * @param provider The JCA cryptographic provider class for the key.
+   * @param key A JCA private key.
+   * @param id The key ID of the corresponding public key that was exported to PGP keyring.
+   * @param keyalias The alias of the key used to identify the right password entry.
+   * @return
+   * @throws IOException
+   * @throws NoSuchProviderException 
+   */
   public static EncryptedCompositeFile getCompositeFile( File file, Provider provider, PrivateKey key, long id, String keyalias )
           throws IOException, NoSuchProviderException
   {
@@ -114,7 +137,19 @@ public class EncryptedCompositeFile
   
   //OutputStream encryptedoutput = null;
 
-  public EncryptedCompositeFile(String canonical, File file, Provider provider, PrivateKey key, long id, String keyalias)
+  /**
+   * Alternate constructor to use with JCA private keys.
+   * 
+   * @param canonical
+   * @param file
+   * @param provider
+   * @param key
+   * @param id
+   * @param keyalias
+   * @throws IOException
+   * @throws NoSuchProviderException 
+   */
+  EncryptedCompositeFile( String canonical, File file, Provider provider, PrivateKey key, long id, String keyalias )
           throws IOException, NoSuchProviderException
   {
     super(canonical, file);
@@ -125,7 +160,16 @@ public class EncryptedCompositeFile
     initPrivateKey();
   }
   
-  public EncryptedCompositeFile(String canonical, File file, PGPPrivateKey key, String keyalias)
+  /**
+   * Constructs an encrypted composite file using given private key.
+   * @param canonical
+   * @param file
+   * @param key
+   * @param keyalias
+   * @throws IOException
+   * @throws NoSuchProviderException 
+   */
+  EncryptedCompositeFile( String canonical, File file, PGPPrivateKey key, String keyalias )
           throws IOException, NoSuchProviderException
   {
     super(canonical, file);
@@ -134,7 +178,14 @@ public class EncryptedCompositeFile
     initPrivateKey();
   }
   
-
+  /**
+   * Finds this composite file's passphrase. The alias is used
+   * to find an entry with correct name, the private key is
+   * used to decrypt it.
+   * 
+   * @throws IOException
+   * @throws NoSuchProviderException 
+   */
   private void initPrivateKey() throws IOException, NoSuchProviderException
   {
     String name;
@@ -152,13 +203,23 @@ public class EncryptedCompositeFile
           InputStream in = super.getInputStream(name);
           passphrase = decryptPassphrase(in);
           in.close();
-          System.out.println("Password is " + new String(passphrase));
+          //System.out.println("Password is " + new String(passphrase));
           passphrasestatus = PASS_STATUS_KNOWN;
         }
       }
     }    
   }
   
+  /**
+   * Retrieves an output stream for a new entry in the composite file.  As data is sent to
+   * the stream it is encrypted using a symmetric key algorithm locked with this archive's passphrase
+   * and a random salt.
+   * 
+   * @param name The relative path of the entry.
+   * @param replace Should the operation go ahead if there is already an entry with the given name?
+   * @return The stream to write 'plain text' to.
+   * @throws IOException 
+   */
   @Override
   public synchronized OutputStream getOutputStream(String name, boolean replace)
           throws IOException
@@ -183,6 +244,10 @@ public class EncryptedCompositeFile
     return new EncryptedOutputWrapper(taroutput, encryptedoutput, compressiongen, literalout);
   }
 
+  /**
+   * Cleans up after entry has been created.
+   * @throws IOException 
+   */
   @Override
   synchronized void closeOutputStream()
           throws IOException
@@ -190,6 +255,14 @@ public class EncryptedCompositeFile
     super.closeOutputStream();
   }
 
+  /**
+   * Get input stream to read data from an entry. The data will be decrypted before being delivered to the
+   * stream.
+   * 
+   * @param name
+   * @return
+   * @throws IOException 
+   */
   @Override
   public synchronized InputStream getInputStream(String name)
           throws IOException
@@ -232,12 +305,19 @@ public class EncryptedCompositeFile
     return null;
   }
 
+  /**
+   * Tidies up after entry has been read.
+   */
   @Override
   synchronized void closeInputStream()
   {      
     super.closeInputStream();
   }
 
+  /**
+   * Close the composite file when access to entries in it is no longer needed.
+   * @throws IOException 
+   */
   @Override
   public void close()
           throws IOException
@@ -245,6 +325,15 @@ public class EncryptedCompositeFile
     super.close();
   }
 
+  /**
+   * Takes a password and encrypts it using a public key.
+   * @param passphrase The passphrase to encrypt.
+   * @param encKey The key to use in the encryption.
+   * @param withIntegrityCheck Whether to add an integrity check to the encryption.
+   * @return
+   * @throws IOException
+   * @throws NoSuchProviderException 
+   */
   private static byte[] encryptPassphrase(
           char[] passphrase,
           PGPPublicKey encKey,
@@ -267,7 +356,7 @@ public class EncryptedCompositeFile
       cOut.write(literal.toByteArray());
       cOut.flush();
       cOut.close();
-      System.out.println("Encrypted password length = " + encrypted.size());
+      //System.out.println("Encrypted password length = " + encrypted.size());
       return encrypted.toByteArray();
 
     } catch (PGPException e)
@@ -285,6 +374,13 @@ public class EncryptedCompositeFile
     return null;
   }
 
+  /**
+   * Decrypt a passphrase using the user's private key.
+   * @param in The passphrase will be read from this input stream which is assumed to contain PGP encrypted data in binary format.
+   * @return The passphrase as array of chars.
+   * @throws IOException
+   * @throws NoSuchProviderException 
+   */
   private char[] decryptPassphrase( InputStream in )
           throws IOException, NoSuchProviderException
   {
@@ -321,7 +417,7 @@ public class EncryptedCompositeFile
       while ( !found && it.hasNext())
       {
         pbe = (PGPPublicKeyEncryptedData) it.next();
-        System.out.println( "Is " + Long.toHexString(pbe.getKeyID()) + " == " + Long.toHexString(keyid) + " ?");
+        //System.out.println( "Is " + Long.toHexString(pbe.getKeyID()) + " == " + Long.toHexString(keyid) + " ?");
         if ( pbe.getKeyID() == keyid )
           found = true;
       }
@@ -355,7 +451,7 @@ public class EncryptedCompositeFile
         Streams.pipeAll(unc, fOut);
         fOut.close();
         pw = fOut.toString();
-        System.out.println("Pass " + pw);
+        //System.out.println("Pass " + pw);
       } else if (message instanceof PGPOnePassSignatureList)
       {
         throw new PGPException("encrypted message contains a signed message - not literal data.");
@@ -371,11 +467,11 @@ public class EncryptedCompositeFile
           System.err.println("message failed integrity check");
         } else
         {
-          System.err.println("message integrity check passed");
+          //System.err.println("message integrity check passed");
         }
       } else
       {
-        System.err.println("no message integrity check");
+        //System.err.println("no message integrity check");
       }
     } catch (PGPException e)
     {
@@ -391,11 +487,20 @@ public class EncryptedCompositeFile
 
   public static final String passchars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNPQRSTUVWXYZ0123456789.,;:[]}{=+-_)(*&%$";
 
+  /**
+   * Add a public key to the composite file which will be used to encrypt the passphrase.
+   * If this is the first public key then generate a random passphrase first.
+   * @param key
+   * @param name
+   * @throws IOException
+   * @throws NoSuchProviderException
+   * @throws NoSuchAlgorithmException 
+   */
   public void addPublicKey(PGPPublicKey key, String name) throws IOException, NoSuchProviderException, NoSuchAlgorithmException
   {
     if (this.passphrasestatus == PASS_STATUS_UNKNOWN)
     {
-      throw new IOException("Cannot determine password to cannot add access to another user.");
+      throw new IOException("Cannot determine password so cannot add access to another user.");
     }
 
     if (this.passphrasestatus == PASS_STATUS_BLANK)
@@ -406,7 +511,7 @@ public class EncryptedCompositeFile
       {
         passphrase[i] = passchars.charAt(sr.nextInt(passchars.length()));
       }
-      System.out.println("Generated password: " + new String(passphrase));
+      //System.out.println("Generated password: " + new String(passphrase));
       this.passphrasestatus = PASS_STATUS_KNOWN;
     }
 
@@ -417,7 +522,11 @@ public class EncryptedCompositeFile
   }
 
   
-  
+  /**
+   * An input stream which is given to client code when attempting to read an encrypted entry.
+   * It intercepts the close() method to clear up underlying classes that relate to the
+   * decryption process.
+   */
   class EncryptedInputWrapper
           extends InputStream
   {
@@ -456,7 +565,7 @@ public class EncryptedCompositeFile
             System.err.println("message failed integrity check");
           } else
           {
-            System.err.println("message integrity check passed");
+            //System.err.println("message integrity check passed");
           }
         } catch (PGPException ex)
         {
@@ -464,7 +573,7 @@ public class EncryptedCompositeFile
         }
       } else
       {
-        System.err.println("no message integrity check");
+        //System.err.println("no message integrity check");
       }
       closeInputStream();
       literalin.close();
@@ -504,7 +613,11 @@ public class EncryptedCompositeFile
   
   
   
-  
+  /**
+   * An output stream which is given to client code when attempting to write an encrypted entry.
+   * It intercepts the close() method to clear up underlying classes that relate to the
+   * encryption process.
+   */  
   class EncryptedOutputWrapper
           extends OutputStream
   {

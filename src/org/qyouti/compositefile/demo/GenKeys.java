@@ -50,6 +50,9 @@ import org.bouncycastle.openpgp.operator.jcajce.JcePBESecretKeyEncryptorBuilder;
 
 /**
  * Generates RSA PGPPublicKey/PGPSecretKey pairs for demos.
+ * Alice and Bob get PGP key pairs stored in their secret key rings. The
+ * two public keys are put into Alice, Bob and Charlie's public key rings.
+ * (Charlie will use Windows CAPI for his key pair.)
  */
 public class GenKeys
 {
@@ -132,7 +135,7 @@ public class GenKeys
   }
 
 
-  public void run()
+  private void run()
           throws Exception
   {
     Security.addProvider(new BouncyCastleProvider());
@@ -152,6 +155,11 @@ public class GenKeys
     saveKeyRings();
   }
 
+  /**
+   * Run the demo.
+   * @param args No arguments used.
+   * @throws Exception 
+   */
   public static void main(
           String[] args)
           throws Exception

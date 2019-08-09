@@ -31,7 +31,9 @@ import org.apache.commons.compress.archivers.tar.TarConstants;
 
 
 /**
- *
+ * CompositeFile provides a way to append files to a 'tar' archive and
+ * to write files whose length is unknown until the output stream is 
+ * closed. Builds on Apache Commons.
  * @author maber01
  */
 public class CompositeFile
@@ -39,6 +41,16 @@ public class CompositeFile
     static final HashMap<String,CompositeFile> cache = new HashMap<>();
     static byte[] zeroblock = new byte[512];
     
+    /**
+     * Retrieves an active composite file from a cache or makes a
+     * new one.  The intention is to make it safe for two different
+     * threads to work with the same composite file - requests to
+     * read/write files will block until other thread has completed
+     * work.  Not tested as yet.
+     * @param file
+     * @return
+     * @throws IOException 
+     */
     public static CompositeFile getCompositeFile( File file ) throws IOException
     {
         String canonical = file.getCanonicalPath();
@@ -68,6 +80,15 @@ public class CompositeFile
     HashMap<String,ComponentEntry> componentmap = new HashMap<>();
     private long nextnewentry=0L;
     
+    /**
+     * Constructs a composite file based on the canonical path to
+     * a tar file and a File referring to it. If the tar doesn't
+     * exist it will be created and then its contents are indexed.
+     * 
+     * @param canonical The canonical path to the tar archive file.
+     * @param file The tar file.
+     * @throws IOException 
+     */
     CompositeFile( String canonical, File file ) throws IOException
     {
         this.canonical = canonical;
@@ -86,6 +107,12 @@ public class CompositeFile
         readComponentMap();
     }
     
+    /**
+     * Closes the underlying RandomAccessFile and removes this
+     * from the cache.
+     * 
+     * @throws IOException 
+     */
     public void close() throws IOException
     {
         synchronized ( this )
@@ -100,7 +127,11 @@ public class CompositeFile
     }
     
     
-    
+    /**
+     * Read headers for all entries in the tar file and make a map.
+     * 
+     * @throws IOException 
+     */
     private void readComponentMap() throws IOException
     {
         componentmap.clear();
@@ -112,7 +143,7 @@ public class CompositeFile
         long size, extra, block;
         while ( (entry=tis.getNextTarEntry()) != null )
         {
-            System.out.println( "File entry: " + entry.getName() + "  length = " + entry.getSize() );
+            //System.out.println( "File entry: " + entry.getName() + "  length = " + entry.getSize() );
             // later entry will overwrite older entries - appropriately
             componentmap.put( entry.getName(), new ComponentEntry( pos, entry ) );
             
@@ -128,9 +159,16 @@ public class CompositeFile
         tis.close();
     }
     
+    /**
+     * Initialise an InputStream which will read the contents of an entry.
+     * 
+     * @param name The (relative) path name of the entry.
+     * @return An InputStream for reading content from.
+     * @throws IOException 
+     */
     public synchronized InputStream getInputStream( String name ) throws IOException
     {
-        System.out.println( "Looking for entry: " + name );
+        //System.out.println( "Looking for entry: " + name );
         if ( currentinputstream != null || currentoutputstream != null )
             throw new IOException( "Attempt to get data from composite file before previous operation has completed." );        
         ComponentEntry entry=componentmap.get( name );
@@ -144,15 +182,26 @@ public class CompositeFile
         return currentinputstream;
     }    
     
+    /**
+     * This will be called when the InputStream from getInputStream() is closed.
+     */
     synchronized void closeInputStream()
     {
         currentinputstream = null;        
     }
     
-    
+    /**
+     * Returns an OutputStream for writing data to an entry in the CompositeFile.
+     * The entry will be completed when the OutputStream is closed.
+     * 
+     * @param name The relative path name within the tar archive.
+     * @param replace Should the entry go ahead even if there is already an entry with the given name.
+     * @return
+     * @throws IOException 
+     */
     public synchronized OutputStream getOutputStream( String name, boolean replace ) throws IOException
     {
-        System.out.println( "Looking for entry: " + name );
+        //System.out.println( "Looking for entry: " + name );
         if ( currentinputstream != null || currentoutputstream != null )
             throw new IOException( "Attempt to get data from composite file before previous operation has completed." );        
         ComponentEntry oldentry=componentmap.get( name );
@@ -174,7 +223,14 @@ public class CompositeFile
         return currentoutputstream;
     }    
     
-    
+    /**
+     * This is called when the client code closes the OutputStream it
+     * received from calling getOutputStream(). It completes the tar
+     * entry, seeks back to the header to correct the file size and then
+     * appends end of file records to the tar.
+     * 
+     * @throws IOException 
+     */
     synchronized void closeOutputStream() throws IOException
     {   
         long pos, size;
@@ -183,12 +239,12 @@ public class CompositeFile
         pos = raf.getFilePointer();
         tos.closeArchiveEntry();              // pads to end of 512 byte block
         size = tos.getEntrySize();
-        System.out.println( "            Wrote 0x" + Long.toHexString(size) + " = " + size + " bytes" );
+        //System.out.println( "            Wrote 0x" + Long.toHexString(size) + " = " + size + " bytes" );
 
         nextnewentry = raf.getFilePointer();  // pos for next component
-        System.out.println( "Next new entry at 0x" + Long.toHexString(nextnewentry) );
+        //System.out.println( "Next new entry at 0x" + Long.toHexString(nextnewentry) );
         tos.close();                          // adds two blocks of zeros
-        System.out.println( "           Now at 0x" + Long.toHexString(raf.getFilePointer()) );
+        //System.out.println( "           Now at 0x" + Long.toHexString(raf.getFilePointer()) );
         
         // now update the header with correct size
         newentry.tararchiveentry.setSize(size);
@@ -198,16 +254,30 @@ public class CompositeFile
         tos.putArchiveEntry( newentry.tararchiveentry );
     }
     
-    
+    /**
+     * This utility class wraps the stream which writes data to the
+     * tar archive so that the close() method can be intercepted and so
+     * closeOutputStream() is called at the right point.
+     */
     class TarOutputWrapper extends OutputStream
     {
       SeekableTarArchiveOutputStream tos;
 
+      /**
+       * Construct wrapper
+       * @param tos The stream which will put data in the tar archive.
+       */
       public TarOutputWrapper(SeekableTarArchiveOutputStream tos)
       {
         this.tos = tos;
       }
 
+      /**
+       * Instead of closing the wrapped stream this calls into CompositeFile.closeOutputStream()
+       * to ensure an orderly end to the new entry.
+       * 
+       * @throws IOException 
+       */
       @Override
       public void close()
               throws IOException
@@ -215,6 +285,10 @@ public class CompositeFile
         closeOutputStream();
       }
 
+      /**
+       * Just hands on to wrapped class.
+       * @throws IOException 
+       */
       @Override
       public void flush()
               throws IOException
@@ -222,6 +296,14 @@ public class CompositeFile
         tos.flush(); //To change body of generated methods, choose Tools | Templates.
       }
 
+      /**
+       * Just hands on to wrapped class.
+       * 
+       * @param b
+       * @param off
+       * @param len
+       * @throws IOException 
+       */
       @Override
       public void write(byte[] b, int off, int len)
               throws IOException
@@ -229,6 +311,12 @@ public class CompositeFile
         tos.write(b, off, len); //To change body of generated methods, choose Tools | Templates.
       }
 
+      /**
+       * Just hands on to wrapped class.
+       * 
+       * @param b
+       * @throws IOException 
+       */
       @Override
       public void write(byte[] b)
               throws IOException
@@ -236,6 +324,12 @@ public class CompositeFile
         tos.write(b); //To change body of generated methods, choose Tools | Templates.
       }
 
+      /**
+       * Just hands on to wrapped class.
+       * 
+       * @param b
+       * @throws IOException 
+       */
       @Override
       public void write(int b)
               throws IOException
@@ -243,7 +337,10 @@ public class CompositeFile
         tos.write(b);
       }
     }
-    
+
+    /**
+     * Provides RandomOutputFile with InputStream interface.
+     */
     class RandomOutputStream extends OutputStream
     {
         RandomAccessFile rafile;
@@ -292,41 +389,69 @@ public class CompositeFile
     }
 
 
+    /**
+     * Provides RandomAccessFile with InputStream interface.
+     */
     class RandomInputStream extends InputStream
     {
         RandomAccessFile raf;
         long mark = 0L;
         boolean dead=false;
         
+        /**
+         * 
+         * @param raf 
+         */
         public RandomInputStream(RandomAccessFile raf)
         {
             this.raf = raf;
         }
 
+        /**
+         * 
+         * @return 
+         */
         @Override
         public boolean markSupported()
         {
             return false;
         }
 
+        /**
+         * 
+         * @throws IOException 
+         */
         @Override
         public synchronized void reset() throws IOException
         {
             throw new IOException( "Reset not supported." );
         }
 
+        /**
+         * 
+         * @param readlimit 
+         */
         @Override
         public synchronized void mark(int readlimit)
         {
             // silently ignore
         }
 
+        /**
+         * 
+         * @throws IOException 
+         */
         @Override
         public void close() throws IOException
         {
             closeInputStream();
         }
 
+        /**
+         * 
+         * @return
+         * @throws IOException 
+         */
         @Override
         public int available() throws IOException
         {
@@ -335,6 +460,12 @@ public class CompositeFile
             return 0;
         }
 
+        /**
+         * 
+         * @param n
+         * @return
+         * @throws IOException 
+         */
         @Override
         public long skip(long n) throws IOException
         {
@@ -346,6 +477,11 @@ public class CompositeFile
             return n;
         }
 
+        /**
+         * 
+         * @return
+         * @throws IOException 
+         */
         @Override
         public int read() throws IOException
         {
@@ -354,6 +490,14 @@ public class CompositeFile
             return raf.read();
         }
 
+        /**
+         * 
+         * @param b
+         * @param off
+         * @param len
+         * @return
+         * @throws IOException 
+         */
         @Override
         public int read(byte[] b, int off, int len) throws IOException
         {
@@ -362,6 +506,12 @@ public class CompositeFile
             return raf.read(b, off, len); //To change body of generated methods, choose Tools | Templates.
         }
 
+        /**
+         * 
+         * @param b
+         * @return
+         * @throws IOException 
+         */
         @Override
         public int read(byte[] b) throws IOException
         {
@@ -371,17 +521,25 @@ public class CompositeFile
         }
     }
     
+    /**
+     * Simple data structure to hold additional data on TarArchiveEntry.
+     * Built when indexing the tar file and as new entries are made.
+     */
     class ComponentEntry
     {
-        long pos;
-        long datapos = -1L;
-        TarArchiveEntry tararchiveentry;
+      public long pos;
+      long datapos = -1L;
+      TarArchiveEntry tararchiveentry;
 
-        public ComponentEntry(long pos, TarArchiveEntry tararchiveentry)
-        {
-            this.pos = pos;
-            this.tararchiveentry = tararchiveentry;
-        }
-        
+      /**
+       * 
+       * @param pos
+       * @param tararchiveentry 
+       */
+      public ComponentEntry(long pos, TarArchiveEntry tararchiveentry)
+      {
+          this.pos = pos;
+          this.tararchiveentry = tararchiveentry;
+      }        
     }
 }

@@ -25,7 +25,10 @@ import org.bouncycastle.openpgp.PGPPublicKey;
 import org.qyouti.compositefile.EncryptedCompositeFile;
 
 /**
- *
+ * Alice creates an encrypted composite file. She will add herself and Bob to the users
+ * who can read it.  If Charlie's key pair was generated he will be added too.  Data is
+ * added to the archive.
+ * 
  * @author maber01
  */
 public class MakeEncryptedTar
@@ -37,8 +40,7 @@ public class MakeEncryptedTar
   public static void main(String[] args)
   {
     int i;
-    byte[] buffer = new byte[1024 * 8];
-    Arrays.fill(buffer, (byte) 0x55);
+    byte[] buffer = "The quick brown fox jumps over the lazy dog. \n".getBytes();
 
     Security.addProvider(new BouncyCastleProvider());
 
@@ -56,23 +58,27 @@ public class MakeEncryptedTar
       PGPPublicKey  pubkey = ku.getPublicKey( "alice" );
       PGPPublicKey  otherpubkey = ku.getPublicKey( "bob" );
       PGPPublicKey  pubkeythree = ku.getPublicKey( "charlie" );
-      System.out.println( "Charlie's public key ID = " + Long.toHexString( pubkeythree.getKeyID() ) );
+      if ( pubkeythree != null )
+        System.out.println( "Charlie's public key ID = " + Long.toHexString( pubkeythree.getKeyID() ) );
+      
       OutputStream out;
-
       EncryptedCompositeFile compfile = EncryptedCompositeFile.getCompositeFile(file,prikey,"alice");
       compfile.addPublicKey( pubkey, "alice" );
       compfile.addPublicKey( otherpubkey, "bob" );
-      compfile.addPublicKey( pubkeythree, "charlie" );
+      if ( pubkeythree != null )
+        compfile.addPublicKey( pubkeythree, "charlie" );
       out = compfile.getOutputStream("bigdatafile.bin.gpg", false);
-      for (i = 0; i < 2; i++)
+      for (i = 0; i < 202; i++)
       {
         out.write(buffer);
       }
       out.close();
 
-//            out = compfile.getOutputStream("little1.xml",false);
-//            out.write(buffer);
-//            out.close();
+      
+      buffer = "Mary had a little lamb, its fleece was white as snow and everywhere that Mary went the lamb was sure to go. \n".getBytes();      
+      out = compfile.getOutputStream("little.txt.gpg",false);
+      out.write(buffer);
+      out.close();
       compfile.close();
 
     } catch (Exception ex)

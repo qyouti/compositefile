@@ -19,14 +19,11 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
-import java.security.PrivateKey;
-import java.security.PublicKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.UUID;
 import org.bouncycastle.bcpg.HashAlgorithmTags;
-import org.bouncycastle.bcpg.PublicKeyAlgorithmTags;
 import org.bouncycastle.bcpg.PublicKeyPacket;
 import org.bouncycastle.bcpg.RSAPublicBCPGKey;
 import org.bouncycastle.openpgp.PGPException;
@@ -36,7 +33,6 @@ import org.bouncycastle.openpgp.PGPPublicKeyRingCollection;
 import org.bouncycastle.openpgp.PGPSignature;
 import org.bouncycastle.openpgp.PGPSignatureGenerator;
 import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator;
-import org.bouncycastle.openpgp.operator.bc.BcPGPKeyConverter;
 import org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentSignerBuilder;
 import org.bouncycastle.openpgp.operator.jcajce.JcaPGPPrivateKey;
 import org.qyouti.winselfcert.WindowsCertificateGenerator;
@@ -45,14 +41,18 @@ import static org.qyouti.winselfcert.WindowsCertificateGenerator.MS_ENH_RSA_AES_
 import static org.qyouti.winselfcert.WindowsCertificateGenerator.PROV_RSA_AES;
 
 /**
- *
+ * This creates a key pair for Charlie in the Windows CAPI service. The private key is given
+ * protected status meaning the user is always prompted for permission when an application 
+ * attempts to use the key and the private key cannot be exported.  The public key is exported
+ * and added to Alice, Bob and Charlie's public PGP key rings.
+ * 
  * @author maber01
  */
 public class WindowsGenKey
 {
   PGPPublicKeyRingCollection[] pubringcoll = new PGPPublicKeyRingCollection[3];
   
-  public void initKeyRings() throws IOException, PGPException
+  private void initKeyRings() throws IOException, PGPException
   {
     FileInputStream fin;
     

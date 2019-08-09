@@ -39,11 +39,10 @@ import org.apache.commons.compress.utils.FixedLengthBlockOutputStream;
  * The SeekableTarOutputStream is based on TarArchiveOutputStream from Apache
  * Commons Compress 1.18.
  *
- * <p>Unlike the source class content of unknown length can be written because
+ * <p>Unlike the source class, content of unknown length can be written because
  * a seek operation is used to go back and complete the header when the content
- * is completed.</p>
- *
- * @NotThreadSafe
+ * is completed. Diff this source code against the first version put in the
+ * git archive to see changes.</p>
  */
 public class SeekableTarArchiveOutputStream extends ArchiveOutputStream {
 
