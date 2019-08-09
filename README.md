@@ -20,6 +20,6 @@ At present, a demo of the tool can be made by running 'main' Java classes in seq
 1. Run GenKeys to create OpenPGP keyrings for users alice, bob and charlie and create key pairs for alice and bob. All three users receive copies of the public keys.
 2. Run WindowsGenKey to create a key pair for charlie using Microsoft CAPI libary. Charlie's public key is exported and put in everyone's key rings.
 3. Run MakeEncryptedTar to create a composite file. Alice will encrypt it, put content in it and make it readable by herself and the others.
-4. Run ReadEncryptedTar to check if Alice can extract data from the composite file.
+4. Run ReadEncryptedTar to check if Bob can extract data from the composite file.
 5. Run WindowsReadEncryptedTar to check if Charlie can extract data from the composite file.
 Steps 2 and 5 can be omitted since they need to be run on a Windows computer.
