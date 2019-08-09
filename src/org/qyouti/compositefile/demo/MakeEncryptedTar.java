@@ -23,6 +23,7 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openpgp.PGPPrivateKey;
 import org.bouncycastle.openpgp.PGPPublicKey;
 import org.qyouti.compositefile.EncryptedCompositeFile;
+import org.qyouti.compositefile.EncryptedCompositeFileUser;
 
 /**
  * Alice creates an encrypted composite file. She will add herself and Bob to the users
@@ -62,12 +63,14 @@ public class MakeEncryptedTar
         System.out.println( "Charlie's public key ID = " + Long.toHexString( pubkeythree.getKeyID() ) );
       
       OutputStream out;
-      EncryptedCompositeFile compfile = EncryptedCompositeFile.getCompositeFile(file,prikey,"alice");
-      compfile.addPublicKey( pubkey, "alice" );
-      compfile.addPublicKey( otherpubkey, "bob" );
+      EncryptedCompositeFileUser alice = new EncryptedCompositeFileUser("alice", prikey, pubkey );
+      
+      EncryptedCompositeFile compfile = EncryptedCompositeFile.getCompositeFile(file);
+      compfile.addPublicKey( alice, pubkey, "alice" );
+      compfile.addPublicKey( alice, otherpubkey, "bob" );
       if ( pubkeythree != null )
-        compfile.addPublicKey( pubkeythree, "charlie" );
-      out = compfile.getOutputStream("bigdatafile.bin.gpg", false);
+        compfile.addPublicKey( alice, pubkeythree, "charlie" );
+      out = compfile.getEncryptingOutputStream(alice,"bigdatafile.bin.gpg", false);
       for (i = 0; i < 202; i++)
       {
         out.write(buffer);
@@ -76,7 +79,7 @@ public class MakeEncryptedTar
 
       
       buffer = "Mary had a little lamb, its fleece was white as snow and everywhere that Mary went the lamb was sure to go. \n".getBytes();      
-      out = compfile.getOutputStream("little.txt.gpg",false);
+      out = compfile.getEncryptingOutputStream(alice,"little.txt.gpg",false);
       out.write(buffer);
       out.close();
       compfile.close();

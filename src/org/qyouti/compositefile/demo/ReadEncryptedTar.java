@@ -25,7 +25,9 @@ import java.util.logging.Logger;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openpgp.PGPException;
 import org.bouncycastle.openpgp.PGPPrivateKey;
+import org.bouncycastle.openpgp.PGPPublicKey;
 import org.qyouti.compositefile.EncryptedCompositeFile;
+import org.qyouti.compositefile.EncryptedCompositeFileUser;
 
 /**
  * Bob will read an entry in the demo encrypted composite file that was created by Alice.
@@ -53,9 +55,11 @@ public class ReadEncryptedTar
       
       KeyUtil ku = new KeyUtil( aliceseckeyfile, alicepubkeyfile );
       PGPPrivateKey  prikey = ku.getPrivateKey("bob", "bob".toCharArray() );      
-      EncryptedCompositeFile compfile = EncryptedCompositeFile.getCompositeFile(file,prikey,"bob");
+      PGPPublicKey  pubkey = ku.getPublicKey("bob");      
+      EncryptedCompositeFileUser bob = new EncryptedCompositeFileUser("bob",prikey,pubkey );
+      EncryptedCompositeFile compfile = EncryptedCompositeFile.getCompositeFile(file);
       
-      in=compfile.getInputStream("little.txt.gpg");
+      in=compfile.getDecryptingInputStream(bob,"little.txt.gpg");
       System.out.print( "0  :  " );
       for ( i=0; (x = in.read()) >= 0; i++ )
       {
@@ -74,9 +78,6 @@ public class ReadEncryptedTar
     {
       Logger.getLogger(ReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
     } catch (PGPException ex)
-    {
-      Logger.getLogger(ReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
-    } catch (NoSuchProviderException ex)
     {
       Logger.getLogger(ReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
     }

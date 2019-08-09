@@ -63,6 +63,11 @@ import org.bouncycastle.util.io.Streams;
 public class EncryptedCompositeFile
         extends CompositeFile
 {
+  static final public int UNKNOWN_PASS_STATUS = -1;
+  static final public int PASS_NONE = 0;
+  static final public int PASS_HIDDEN = 1;
+  static final public int PASS_KNOWN = 2;
+
 
   static final HashMap<String, EncryptedCompositeFile> ecache = new HashMap<>();
 
@@ -71,14 +76,12 @@ public class EncryptedCompositeFile
    * that will be used to decrypt passwords.
    * 
    * @param file The tar file requested.
-   * @param key A PGPPrivateKey which will be used to decrypt component files.
-   * @param keyalias The alias of the key used to identify the right password entry.
    * @return The EncryptedCompositeFile ready to use.
    * @throws IOException
    * @throws NoSuchProviderException 
    */
-  public static EncryptedCompositeFile getCompositeFile(File file, PGPPrivateKey key, String keyalias)
-          throws IOException, NoSuchProviderException
+  public static EncryptedCompositeFile getCompositeFile(File file)
+          throws IOException
   {
     String canonical = file.getCanonicalPath();
     EncryptedCompositeFile cf;
@@ -87,53 +90,12 @@ public class EncryptedCompositeFile
       cf = ecache.get(canonical);
       if (cf == null)
       {
-        cf = new EncryptedCompositeFile(canonical, file, key, keyalias);
+        cf = new EncryptedCompositeFile(canonical, file);
         ecache.put(canonical, cf);
       }
     }
     return cf;
   }
-
-  /**
-   * Alternate method giving JCA private key instead of PGP.
-   * 
-   * @param file The tar file requested.
-   * @param provider The JCA cryptographic provider class for the key.
-   * @param key A JCA private key.
-   * @param id The key ID of the corresponding public key that was exported to PGP keyring.
-   * @param keyalias The alias of the key used to identify the right password entry.
-   * @return
-   * @throws IOException
-   * @throws NoSuchProviderException 
-   */
-  public static EncryptedCompositeFile getCompositeFile( File file, Provider provider, PrivateKey key, long id, String keyalias )
-          throws IOException, NoSuchProviderException
-  {
-    String canonical = file.getCanonicalPath();
-    EncryptedCompositeFile cf;
-    synchronized (ecache)
-    {
-      cf = ecache.get(canonical);
-      if (cf == null)
-      {
-        cf = new EncryptedCompositeFile(canonical, file, provider, key, id, keyalias);
-        ecache.put(canonical, cf);
-      }
-    }
-    return cf;
-  }
-
-  static final private int PASS_STATUS_BLANK = 0;
-  static final private int PASS_STATUS_UNKNOWN = 1;
-  static final private int PASS_STATUS_KNOWN = 2;
-
-  int passphrasestatus = PASS_STATUS_BLANK;
-  char[] passphrase = null;
-  String keyalias;
-  PGPPrivateKey pgpkey;
-  Provider jcaprovider;
-  PrivateKey jcakey;
-  long jcakeyid;
   
   //OutputStream encryptedoutput = null;
 
@@ -149,34 +111,23 @@ public class EncryptedCompositeFile
    * @throws IOException
    * @throws NoSuchProviderException 
    */
-  EncryptedCompositeFile( String canonical, File file, Provider provider, PrivateKey key, long id, String keyalias )
-          throws IOException, NoSuchProviderException
+  EncryptedCompositeFile( String canonical, File file )
+          throws IOException
   {
     super(canonical, file);
-    this.jcaprovider = provider;
-    this.keyalias = keyalias;
-    this.jcakey = key;
-    this.jcakeyid = id;
-    initPrivateKey();
   }
   
-  /**
-   * Constructs an encrypted composite file using given private key.
-   * @param canonical
-   * @param file
-   * @param key
-   * @param keyalias
-   * @throws IOException
-   * @throws NoSuchProviderException 
-   */
-  EncryptedCompositeFile( String canonical, File file, PGPPrivateKey key, String keyalias )
-          throws IOException, NoSuchProviderException
+
+  private static String getPassphraseFileName( String alias )
   {
-    super(canonical, file);
-    this.keyalias = keyalias;
-    this.pgpkey = key;    
-    initPrivateKey();
+    return ".encryption/passwords/" + alias + ".gpg";
   }
+
+  private static boolean isPassphraseFileName( String name )
+  {
+    return name.startsWith(".encryption/passwords/") && name.endsWith(".gpg");
+  }
+  
   
   /**
    * Finds this composite file's passphrase. The alias is used
@@ -186,28 +137,40 @@ public class EncryptedCompositeFile
    * @throws IOException
    * @throws NoSuchProviderException 
    */
-  private void initPrivateKey() throws IOException, NoSuchProviderException
+  private void initPrivateKey( EncryptedCompositeFileUser eu )
+          throws IOException, NoSuchProviderException
   {
+    int passphrasestatus = eu.getPassPhraseStatus( getCanonicalPath() );
+    char[] passphrase=null;
+    
+    if ( passphrasestatus == PASS_KNOWN || passphrasestatus == PASS_HIDDEN )
+      return;
+    
     String name;
     for (ComponentEntry entry : componentmap.values())
     {
       name = entry.tararchiveentry.getName();
-      if (name.startsWith("password_") && name.endsWith(".gpg"))
+      if ( isPassphraseFileName(name) )
       {
-        if (passphrasestatus == PASS_STATUS_BLANK)
+        if (passphrasestatus != PASS_KNOWN)
         {
-          passphrasestatus = PASS_STATUS_UNKNOWN;
+          passphrasestatus = PASS_HIDDEN;
         }
-        if (name.equals("password_" + keyalias + ".gpg"))
+        if (name.equals(getPassphraseFileName(eu.getKeyalias())))
         {
           InputStream in = super.getInputStream(name);
-          passphrase = decryptPassphrase(in);
+          passphrase = decryptPassphrase(eu,in);
           in.close();
           //System.out.println("Password is " + new String(passphrase));
-          passphrasestatus = PASS_STATUS_KNOWN;
+          passphrasestatus = PASS_KNOWN;
         }
       }
-    }    
+    }
+    if (passphrasestatus == UNKNOWN_PASS_STATUS)
+      passphrasestatus = PASS_NONE;
+    
+    eu.setPassPhraseStatus( getCanonicalPath(), passphrasestatus );
+    eu.setPassPhrase( getCanonicalPath(), passphrase );
   }
   
   /**
@@ -215,15 +178,21 @@ public class EncryptedCompositeFile
    * the stream it is encrypted using a symmetric key algorithm locked with this archive's passphrase
    * and a random salt.
    * 
+   * @param eu
    * @param name The relative path of the entry.
    * @param replace Should the operation go ahead if there is already an entry with the given name?
    * @return The stream to write 'plain text' to.
    * @throws IOException 
    */
-  @Override
-  public synchronized OutputStream getOutputStream(String name, boolean replace)
+  public synchronized OutputStream getEncryptingOutputStream(EncryptedCompositeFileUser eu, String name, boolean replace)
           throws IOException
   {
+    if ( eu.getPassPhraseStatus(getCanonicalPath()) != PASS_KNOWN )
+      throw new IOException("Unable to initialise encrypted output because there are no recipients added.");
+    char[] passphrase = eu.getPassPhrase(getCanonicalPath());
+    if ( passphrase == null )
+      throw new IOException("Unable to initialise encrypted output because no pass phrase has been generated.");
+    
     OutputStream taroutput = super.getOutputStream(name, replace);
 
     PGPEncryptedDataGenerator encryptiongen = new PGPEncryptedDataGenerator(new JcePGPDataEncryptorBuilder(PGPEncryptedData.CAST5)
@@ -249,8 +218,7 @@ public class EncryptedCompositeFile
    * @throws IOException 
    */
   @Override
-  synchronized void closeOutputStream()
-          throws IOException
+  synchronized void closeOutputStream() throws IOException
   {
     super.closeOutputStream();
   }
@@ -263,10 +231,22 @@ public class EncryptedCompositeFile
    * @return
    * @throws IOException 
    */
-  @Override
-  public synchronized InputStream getInputStream(String name)
-          throws IOException
+  public synchronized InputStream getDecryptingInputStream(EncryptedCompositeFileUser eu, String name) throws IOException
   {
+    try
+    {
+      initPrivateKey(eu);
+    }
+    catch (NoSuchProviderException ex)
+    {
+      throw new IOException("Unable to determine password to use.",ex);
+    }
+    if ( eu.getPassPhraseStatus(getCanonicalPath()) != PASS_KNOWN )
+      throw new IOException("Unable to initialise encrypted output because there are no recipients added.");
+    char[] passphrase = eu.getPassPhrase(getCanonicalPath());
+    if ( passphrase == null )
+      throw new IOException("Unable to initialise encrypted output because no pass phrase has been generated.");
+    
     EncryptedInputWrapper inputwrapper = new EncryptedInputWrapper();
     try
     {
@@ -381,14 +361,10 @@ public class EncryptedCompositeFile
    * @throws IOException
    * @throws NoSuchProviderException 
    */
-  private char[] decryptPassphrase( InputStream in )
+  private char[] decryptPassphrase( EncryptedCompositeFileUser eu, InputStream in )
           throws IOException, NoSuchProviderException
   {
-    long keyid;
-    if (  this.pgpkey != null )
-      keyid = this.pgpkey.getKeyID();
-    else
-      keyid = this.jcakeyid;
+    long keyid = eu.getPgppublickey().getKeyID();
     String pw = null;
     in = PGPUtil.getDecoderStream(in);
 
@@ -428,10 +404,10 @@ public class EncryptedCompositeFile
       }
 
       InputStream clear;
-      if ( this.pgpkey != null )
-        clear = pbe.getDataStream(new JcePublicKeyDataDecryptorFactoryBuilder().setProvider("BC").build(pgpkey));
+      if ( eu.getPgpprivatekey() != null )
+        clear = pbe.getDataStream(new JcePublicKeyDataDecryptorFactoryBuilder().setProvider("BC").build(eu.getPgpprivatekey()));
       else
-        clear = pbe.getDataStream(new JcePublicKeyDataDecryptorFactoryBuilder().setProvider(jcaprovider).setContentProvider("BC").build(jcakey));
+        clear = pbe.getDataStream(new JcePublicKeyDataDecryptorFactoryBuilder().setProvider(eu.getJcaprovider()).setContentProvider("BC").build(eu.getJcaprivatekey()));
       
       JcaPGPObjectFactory plainFact = new JcaPGPObjectFactory(clear);
       Object message = plainFact.nextObject();
@@ -487,6 +463,18 @@ public class EncryptedCompositeFile
 
   public static final String passchars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNPQRSTUVWXYZ0123456789.,;:[]}{=+-_)(*&%$";
 
+  public static char[] generateRandomPassphrase() throws NoSuchAlgorithmException
+  {
+    SecureRandom sr = SecureRandom.getInstanceStrong();
+    char[] passphrase = new char[30];
+    for (int i = 0; i < passphrase.length; i++)
+    {
+      passphrase[i] = passchars.charAt(sr.nextInt(passchars.length()));
+    }
+    return passphrase;
+  }
+  
+  
   /**
    * Add a public key to the composite file which will be used to encrypt the passphrase.
    * If this is the first public key then generate a random passphrase first.
@@ -496,27 +484,23 @@ public class EncryptedCompositeFile
    * @throws NoSuchProviderException
    * @throws NoSuchAlgorithmException 
    */
-  public void addPublicKey(PGPPublicKey key, String name) throws IOException, NoSuchProviderException, NoSuchAlgorithmException
+  public void addPublicKey(EncryptedCompositeFileUser eu, PGPPublicKey key, String name) throws IOException, NoSuchProviderException, NoSuchAlgorithmException
   {
-    if (this.passphrasestatus == PASS_STATUS_UNKNOWN)
+    initPrivateKey( eu );
+    int passphrasestatus = eu.getPassPhraseStatus( getCanonicalPath() );
+    if (passphrasestatus == PASS_HIDDEN)
     {
       throw new IOException("Cannot determine password so cannot add access to another user.");
     }
 
-    if (this.passphrasestatus == PASS_STATUS_BLANK)
+    if (passphrasestatus == PASS_NONE)
     {
-      SecureRandom sr = SecureRandom.getInstanceStrong();
-      passphrase = new char[20];
-      for (int i = 0; i < passphrase.length; i++)
-      {
-        passphrase[i] = passchars.charAt(sr.nextInt(passchars.length()));
-      }
-      //System.out.println("Generated password: " + new String(passphrase));
-      this.passphrasestatus = PASS_STATUS_KNOWN;
+      eu.setPassPhrase(getCanonicalPath(), generateRandomPassphrase() );
+      eu.setPassPhraseStatus(getCanonicalPath(), PASS_KNOWN );
     }
 
-    OutputStream out = super.getOutputStream("password_" + name + ".gpg", true);
-    byte[] encrypted = encryptPassphrase(passphrase, key, true);
+    OutputStream out = super.getOutputStream(getPassphraseFileName(name), true);
+    byte[] encrypted = encryptPassphrase( eu.getPassPhrase( getCanonicalPath() ), key, true);
     out.write(encrypted);
     out.close();
   }

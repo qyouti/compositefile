@@ -106,6 +106,13 @@ public class CompositeFile
         
         readComponentMap();
     }
+
+  public String getCanonicalPath()
+  {
+    return canonical;
+  }
+    
+    
     
     /**
      * Closes the underlying RandomAccessFile and removes this

@@ -39,6 +39,7 @@ import org.bouncycastle.openpgp.PGPPublicKeyRingCollection;
 import org.bouncycastle.openpgp.operator.KeyFingerPrintCalculator;
 import org.bouncycastle.openpgp.operator.bc.BcKeyFingerprintCalculator;
 import org.qyouti.compositefile.EncryptedCompositeFile;
+import org.qyouti.compositefile.EncryptedCompositeFileUser;
 
 /**
  * User Charlie reads an entry in the demo encrypted composite file.
@@ -61,26 +62,25 @@ public class WindowsReadEncryptedTar
       InputStream in;
       File file = new File("demo/mydataenc.tar");
 
+      // Load charlies public key from GPG store
       File charliepubkeyfile = new File( "demo/charlie_pubring.gpg" );
       FileInputStream fin = new FileInputStream( charliepubkeyfile );
       KeyFingerPrintCalculator fpcalc = new BcKeyFingerprintCalculator();
       PGPPublicKeyRingCollection pubringcoll = new PGPPublicKeyRingCollection( fin, fpcalc );
       PGPPublicKeyRing keyring = pubringcoll.getKeyRings( "charlie" ).next();
       PGPPublicKey charliepubkey = keyring.getPublicKey();
-      if ( charliepubkey != null )
-        System.out.println( "Charlie public key id " + Long.toHexString(charliepubkey.getKeyID()) );
       
+      // Load charlies private key from Windows personal certificate store
       KeyStore keyStore = KeyStore.getInstance("Windows-MY");
       keyStore.load(null, null);  // Load keystore 
       PrivateKey k = (PrivateKey)keyStore.getKey("Charlie", null );
       X509Certificate c = (X509Certificate)keyStore.getCertificate("Charlie");
-      BigInteger serial = c.getSerialNumber();
-      long s = serial.longValue();
-      System.out.println( "Charlie's private key serial = " + Long.toHexString(s) );
+
+      // read an encrypted entry...
+      EncryptedCompositeFileUser eu = new EncryptedCompositeFileUser( "charlie", k, keyStore.getProvider(), charliepubkey );
+      EncryptedCompositeFile compfile = EncryptedCompositeFile.getCompositeFile(file);
       
-      EncryptedCompositeFile compfile = EncryptedCompositeFile.getCompositeFile(file,keyStore.getProvider(),k,charliepubkey.getKeyID(),"charlie");
-      
-      in=compfile.getInputStream("bigdatafile.bin.gpg");
+      in=compfile.getDecryptingInputStream(eu,"bigdatafile.bin.gpg");
       System.out.print( "0  :  " );
       for ( i=0; (x = in.read()) >= 0; i++ )
       {
@@ -96,9 +96,6 @@ public class WindowsReadEncryptedTar
       compfile.close();
     }
     catch (IOException ex)
-    {
-      Logger.getLogger(WindowsReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
-    } catch (NoSuchProviderException ex)
     {
       Logger.getLogger(WindowsReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
     }
