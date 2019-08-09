@@ -14,4 +14,12 @@ Java library, built on Apache Commons Compress that provides a kind of tar archi
 5. Data component files encrypted with symmetric key made from fixed password and random salt.
 6. Same password used for every data component but different salt.
 # Status
-Experimentation and basic working demo. Class MakeEncryptedTar generates keys for Alice and Bob and puts some data in a new archive. ReadEncryptedTar attempts read a data file from the archive.
+Experimentation and basic working demo.
+# Full Demo
+At present, a demo of the tool can be made by running 'main' Java classes in sequence.  Files will be created in a subdirectory "demo" of the current directory.
+1. Run GenKeys to create OpenPGP keyrings for users alice, bob and charlie and create key pairs for alice and bob. All three users receive copies of the public keys.
+2. Run WindowsGenKey to create a key pair for charlie using Microsoft CAPI libary. Charlie's public key is exported and put in everyone's key rings.
+3. Run MakeEncryptedTar to create a composite file. Alice will encrypt it, put content in it and make it readable by herself and the others.
+4. Run ReadEncryptedTar to check if Alice can extract data from the composite file.
+5. Run WindowsReadEncryptedTar to check if Charlie can extract data from the composite file.
+Steps 2 and 5 can be omitted since they need to be run on a Windows computer.
