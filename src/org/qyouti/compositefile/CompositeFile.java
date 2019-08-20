@@ -166,6 +166,20 @@ public class CompositeFile
         tis.close();
     }
     
+    
+    /**
+     * Does an entry of the given name exist in the archive?
+     * @param name The name to test.
+     * @return 
+     */
+    public boolean exists( String name )
+    {
+      ComponentEntry entry=componentmap.get( name );
+      return entry != null;
+    }
+    
+    
+    
     /**
      * Initialise an InputStream which will read the contents of an entry.
      * 
@@ -259,6 +273,7 @@ public class CompositeFile
         RandomOutputStream ros = new RandomOutputStream( raf );
         tos = new SeekableTarArchiveOutputStream( ros );
         tos.putArchiveEntry( newentry.tararchiveentry );
+        componentmap.put( newentry.tararchiveentry.getName(), newentry );
     }
     
     /**
