@@ -303,6 +303,10 @@ public class EncryptedCompositeFile
           throws IOException
   {
     super.close();
+    synchronized ( ecache )
+    {
+      ecache.remove( getCanonicalPath() );
+    }
   }
 
   /**

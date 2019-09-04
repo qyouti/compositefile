@@ -49,14 +49,21 @@ public class KeyUtil
     this.secfile = secfile;
     this.pubfile = pubfile;
     FileInputStream fin;
-    fin = new FileInputStream( secfile );
-    secringcoll = new PGPSecretKeyRingCollection( fin, fpcalc );
-    fin = new FileInputStream( pubfile );
-    pubringcoll = new PGPPublicKeyRingCollection( fin, fpcalc );
+    if ( secfile != null )
+    {
+      fin = new FileInputStream( secfile );
+      secringcoll = new PGPSecretKeyRingCollection( fin, fpcalc );
+    }
+    if ( pubfile != null )
+    {
+      fin = new FileInputStream( pubfile );
+      pubringcoll = new PGPPublicKeyRingCollection( fin, fpcalc );
+    }
   }
   
   public PGPPublicKey getPublicKey( String name ) throws PGPException
   {
+    if ( pubfile == null ) return null;
     Iterator<PGPPublicKeyRing> it = pubringcoll.getKeyRings(name);
     PGPPublicKeyRing keyring;
     if ( !it.hasNext() )
@@ -69,6 +76,7 @@ public class KeyUtil
   
   public PGPPrivateKey getPrivateKey( String name, char[] passphrase ) throws PGPException
   {
+    if ( secfile == null ) return null;
     Iterator<PGPSecretKeyRing> it = secringcoll.getKeyRings(name);
     PGPSecretKeyRing keyring;
     if ( !it.hasNext() )
