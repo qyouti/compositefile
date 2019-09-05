@@ -32,7 +32,7 @@ import org.qyouti.compositefile.EncryptedCompositeFileUser;
  * 
  * @author maber01
  */
-public class MakeEncryptedTar
+public class AliceMakeEncryptedTar
 {
 
   /**
@@ -59,8 +59,6 @@ public class MakeEncryptedTar
       PGPPublicKey  pubkey = ku.getPublicKey( "alice" );
       PGPPublicKey  otherpubkey = ku.getPublicKey( "bob" );
       PGPPublicKey  pubkeythree = ku.getPublicKey( "charlie" );
-      if ( pubkeythree != null )
-        System.out.println( "Charlie's public key ID = " + Long.toHexString( pubkeythree.getKeyID() ) );
       
       OutputStream out;
       EncryptedCompositeFileUser alice = new EncryptedCompositeFileUser("alice", prikey, pubkey );

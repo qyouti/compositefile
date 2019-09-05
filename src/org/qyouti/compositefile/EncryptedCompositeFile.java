@@ -24,8 +24,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
-import java.security.PrivateKey;
-import java.security.Provider;
 import java.security.SecureRandom;
 import java.util.Date;
 import java.util.HashMap;
@@ -43,7 +41,6 @@ import org.bouncycastle.openpgp.PGPLiteralData;
 import org.bouncycastle.openpgp.PGPLiteralDataGenerator;
 import org.bouncycastle.openpgp.PGPOnePassSignatureList;
 import org.bouncycastle.openpgp.PGPPBEEncryptedData;
-import org.bouncycastle.openpgp.PGPPrivateKey;
 import org.bouncycastle.openpgp.PGPPublicKey;
 import org.bouncycastle.openpgp.PGPPublicKeyEncryptedData;
 import org.bouncycastle.openpgp.PGPUtil;
@@ -408,10 +405,7 @@ public class EncryptedCompositeFile
       }
 
       InputStream clear;
-      if ( eu.getPgpprivatekey() != null )
-        clear = pbe.getDataStream(new JcePublicKeyDataDecryptorFactoryBuilder().setProvider("BC").build(eu.getPgpprivatekey()));
-      else
-        clear = pbe.getDataStream(new JcePublicKeyDataDecryptorFactoryBuilder().setProvider(eu.getJcaprovider()).setContentProvider("BC").build(eu.getJcaprivatekey()));
+      clear = pbe.getDataStream(new JcePublicKeyDataDecryptorFactoryBuilder().setProvider("BC").build(eu.getPgpprivatekey()));
       
       JcaPGPObjectFactory plainFact = new JcaPGPObjectFactory(clear);
       Object message = plainFact.nextObject();

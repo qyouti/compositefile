@@ -29,8 +29,6 @@ public class EncryptedCompositeFileUser
 {
   String keyalias;
   PGPPrivateKey pgpprivatekey;
-  PrivateKey    jcaprivatekey;
-  Provider      jcaprovider;
   PGPPublicKey pgppublickey;
   
   HashMap<String,PassPhraseStatus> passphrasestatusmap = new HashMap<>();
@@ -42,14 +40,6 @@ public class EncryptedCompositeFileUser
     this.pgppublickey = pgppublickey;
   }
 
-  public EncryptedCompositeFileUser(String keyalias, PrivateKey jcaprivatekey, Provider jcaprovider, PGPPublicKey pgppublickey)
-  {
-    this.keyalias = keyalias;
-    this.jcaprivatekey = jcaprivatekey;
-    this.jcaprovider = jcaprovider;
-    this.pgppublickey = pgppublickey;
-  }
-
   public String getKeyalias()
   {
     return keyalias;
@@ -58,16 +48,6 @@ public class EncryptedCompositeFileUser
   public PGPPrivateKey getPgpprivatekey()
   {
     return pgpprivatekey;
-  }
-
-  public PrivateKey getJcaprivatekey()
-  {
-    return jcaprivatekey;
-  }
-
-  public Provider getJcaprovider()
-  {
-    return jcaprovider;
   }
 
   public PGPPublicKey getPgppublickey()

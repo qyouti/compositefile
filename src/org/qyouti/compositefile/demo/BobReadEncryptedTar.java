@@ -33,7 +33,7 @@ import org.qyouti.compositefile.EncryptedCompositeFileUser;
  * Bob will read an entry in the demo encrypted composite file that was created by Alice.
  * @author maber01
  */
-public class ReadEncryptedTar
+public class BobReadEncryptedTar
 {
 
   /**
@@ -41,7 +41,7 @@ public class ReadEncryptedTar
    */
   public static void main(String[] args)
   {
-        Security.addProvider(new BouncyCastleProvider());
+    Security.addProvider(new BouncyCastleProvider());
     
     try
     {
@@ -76,10 +76,10 @@ public class ReadEncryptedTar
     }
     catch (IOException ex)
     {
-      Logger.getLogger(ReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
+      Logger.getLogger(BobReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
     } catch (PGPException ex)
     {
-      Logger.getLogger(ReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
+      Logger.getLogger(BobReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
     }
 
   }

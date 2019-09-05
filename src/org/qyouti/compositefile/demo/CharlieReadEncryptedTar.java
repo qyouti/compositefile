@@ -15,11 +15,13 @@
  */
 package org.qyouti.compositefile.demo;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigInteger;
+import java.security.InvalidKeyException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
@@ -31,8 +33,13 @@ import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openpgp.PGPException;
+import org.bouncycastle.openpgp.PGPPrivateKey;
 import org.bouncycastle.openpgp.PGPPublicKey;
 import org.bouncycastle.openpgp.PGPPublicKeyRing;
 import org.bouncycastle.openpgp.PGPPublicKeyRingCollection;
@@ -46,41 +53,69 @@ import org.qyouti.compositefile.EncryptedCompositeFileUser;
  * 
  * @author maber01
  */
-public class WindowsReadEncryptedTar
+public class CharlieReadEncryptedTar
 {
 
+  public static char[] readEncryptedPassword( File file ) 
+  {
+    try
+    {
+      KeyStore keyStore = KeyStore.getInstance("Windows-MY");
+      keyStore.load(null, null);  // Load keystore 
+      PrivateKey k = (PrivateKey)keyStore.getKey("My key pair for guarding passwords", null );    
+
+      FileInputStream fin = new FileInputStream( file );
+      ByteArrayOutputStream baout = new ByteArrayOutputStream();
+      int b;
+      while ( (b = fin.read()) >=0  )
+        baout.write( b );
+      fin.close();
+      baout.close();
+
+      Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+      cipher.init( Cipher.DECRYPT_MODE, k );
+      byte[] decrypt = cipher.doFinal( baout.toByteArray() );
+      System.out.println( "Password is: " + new String( decrypt, "UTF8" ) );
+      return new String( decrypt, "UTF8" ).toCharArray();
+    }
+    catch ( Exception e )
+    {
+      e.printStackTrace();
+    }
+    return null;
+  }
+  
+  
   /**
    * @param args the command line arguments
    */
   public static void main(String[] args)
   {
-        Security.addProvider(new BouncyCastleProvider());
+    Security.addProvider(new BouncyCastleProvider());
     
     try
     {
       int x, i;
       InputStream in;
       File file = new File("demo/mydataenc.tar");
-
-      // Load charlies public key from GPG store
+      File passwordfile = new File( "demo/windowsprotectedpasswords.bin" );
+      File charlieseckeyfile = new File( "demo/charlie_secring.gpg" );
       File charliepubkeyfile = new File( "demo/charlie_pubring.gpg" );
-      FileInputStream fin = new FileInputStream( charliepubkeyfile );
-      KeyFingerPrintCalculator fpcalc = new BcKeyFingerprintCalculator();
-      PGPPublicKeyRingCollection pubringcoll = new PGPPublicKeyRingCollection( fin, fpcalc );
-      PGPPublicKeyRing keyring = pubringcoll.getKeyRings( "charlie" ).next();
-      PGPPublicKey charliepubkey = keyring.getPublicKey();
       
-      // Load charlies private key from Windows personal certificate store
-      KeyStore keyStore = KeyStore.getInstance("Windows-MY");
-      keyStore.load(null, null);  // Load keystore 
-      PrivateKey k = (PrivateKey)keyStore.getKey("Charlie", null );
-      X509Certificate c = (X509Certificate)keyStore.getCertificate("Charlie");
-
-      // read an encrypted entry...
-      EncryptedCompositeFileUser eu = new EncryptedCompositeFileUser( "charlie", k, keyStore.getProvider(), charliepubkey );
+      char[] charliepw = readEncryptedPassword( passwordfile );
+      if ( charliepw == null )
+      {
+        System.out.println( "Cannot open key files because unable to read password file.");
+        return;
+      }
+      
+      KeyUtil ku = new KeyUtil( charlieseckeyfile, charliepubkeyfile );
+      PGPPrivateKey  prikey = ku.getPrivateKey("charlie", charliepw );      
+      PGPPublicKey  pubkey = ku.getPublicKey("charlie");      
+      EncryptedCompositeFileUser charlie = new EncryptedCompositeFileUser("charlie",prikey,pubkey );
       EncryptedCompositeFile compfile = EncryptedCompositeFile.getCompositeFile(file);
       
-      in=compfile.getDecryptingInputStream(eu,"bigdatafile.bin.gpg");
+      in=compfile.getDecryptingInputStream(charlie,"little.txt.gpg");
       System.out.print( "0  :  " );
       for ( i=0; (x = in.read()) >= 0; i++ )
       {
@@ -91,34 +126,18 @@ public class WindowsReadEncryptedTar
         if ( i%64 == 63 )
           System.out.print( "\n" +  Integer.toHexString(i+1) + "  :  " );
       }
-      System.out.println( "\n" );
       in.close();
       compfile.close();
+      System.out.print( "\n\n" );
     }
     catch (IOException ex)
     {
-      Logger.getLogger(WindowsReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
-    }
-    catch (KeyStoreException ex)
+      Logger.getLogger(BobReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
+    } catch (PGPException ex)
     {
-      Logger.getLogger(WindowsReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
+      Logger.getLogger(BobReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
     }
-    catch (NoSuchAlgorithmException ex)
-    {
-      Logger.getLogger(WindowsReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
-    }
-    catch (CertificateException ex)
-    {
-      Logger.getLogger(WindowsReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
-    }
-    catch (UnrecoverableKeyException ex)
-    {
-      Logger.getLogger(WindowsReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
-    }
-    catch (PGPException ex)
-    {
-      Logger.getLogger(WindowsReadEncryptedTar.class.getName()).log(Level.SEVERE, null, ex);
-    }
+
 
   }
 

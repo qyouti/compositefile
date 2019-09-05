@@ -20,14 +20,18 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.math.BigInteger;
 import java.security.InvalidKeyException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchProviderException;
+import java.security.PublicKey;
 import java.security.Security;
 import java.security.SignatureException;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.UUID;
+import javax.crypto.Cipher;
 
 import org.bouncycastle.bcpg.ArmoredOutputStream;
 import org.bouncycastle.bcpg.HashAlgorithmTags;
@@ -47,6 +51,11 @@ import org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentSignerBuilder;
 import org.bouncycastle.openpgp.operator.jcajce.JcaPGPDigestCalculatorProviderBuilder;
 import org.bouncycastle.openpgp.operator.jcajce.JcaPGPKeyPair;
 import org.bouncycastle.openpgp.operator.jcajce.JcePBESecretKeyEncryptorBuilder;
+import org.qyouti.compositefile.EncryptedCompositeFile;
+import org.qyouti.winselfcert.WindowsCertificateGenerator;
+import static org.qyouti.winselfcert.WindowsCertificateGenerator.CRYPT_USER_PROTECTED;
+import static org.qyouti.winselfcert.WindowsCertificateGenerator.MS_ENH_RSA_AES_PROV;
+import static org.qyouti.winselfcert.WindowsCertificateGenerator.PROV_RSA_AES;
 
 /**
  * Generates RSA PGPPublicKey/PGPSecretKey pairs for demos.
@@ -54,7 +63,7 @@ import org.bouncycastle.openpgp.operator.jcajce.JcePBESecretKeyEncryptorBuilder;
  * two public keys are put into Alice, Bob and Charlie's public key rings.
  * (Charlie will use Windows CAPI for his key pair.)
  */
-public class GenKeys
+public class AliceBobCharlieGenKeys
 {
 
   PGPSecretKeyRingCollection[] secringcoll = new PGPSecretKeyRingCollection[3];
@@ -66,7 +75,7 @@ public class GenKeys
   {
     secringcoll[0] = new PGPSecretKeyRingCollection( new ArrayList<>() );
     secringcoll[1] = new PGPSecretKeyRingCollection( new ArrayList<>() );
-    secringcoll[2] = null;
+    secringcoll[2] = new PGPSecretKeyRingCollection( new ArrayList<>() );
     
     pubringcoll[0] = new PGPPublicKeyRingCollection( new ArrayList<>() );
     pubringcoll[1] = new PGPPublicKeyRingCollection( new ArrayList<>() );    
@@ -140,21 +149,80 @@ public class GenKeys
   {
     Security.addProvider(new BouncyCastleProvider());
 
-    createKeyRings();
+    char[] charliepassword = makeWindowsPasswordGuard();
     
+    createKeyRings();
     KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA", "BC");
-
     kpg.initialize(2048);
     KeyPair alicekp = kpg.generateKeyPair();
     kpg.initialize(2048);
     KeyPair bobkp = kpg.generateKeyPair();
-
     exportKeyPair( 0, alicekp, "alice", "alice".toCharArray() );
     exportKeyPair( 1, bobkp, "bob", "bob".toCharArray() );
+    
+    if ( charliepassword != null )
+    {
+      kpg.initialize(2048);
+      KeyPair charliekp = kpg.generateKeyPair();
+      exportKeyPair( 2, charliekp, "charlie", charliepassword );
+    }
     
     saveKeyRings();
   }
 
+  
+  /**
+   * @param args the command line arguments
+   */
+  public static char[] makeWindowsPasswordGuard()
+  {
+    try
+    {
+      PublicKey pubk;
+      BigInteger serial;
+      WindowsCertificateGenerator wcg = new WindowsCertificateGenerator();
+      
+      serial = wcg.generateSelfSignedCertificate(
+              "CN=My key pair for guarding passwords",
+              "qyouti-" + UUID.randomUUID().toString(),
+              MS_ENH_RSA_AES_PROV,
+              PROV_RSA_AES,
+              true,
+              2048,
+              CRYPT_USER_PROTECTED
+      );
+      if (serial == null)
+      {
+        System.out.println("Failed to make certificate.");
+        return null;
+      }
+      else
+      {
+        System.out.println("Serial number = " + serial.toString(16) );
+        System.out.println("As long = " + Long.toHexString( serial.longValue() ) );        
+      }
+
+      pubk = wcg.getPublickey();
+      char[] p = EncryptedCompositeFile.generateRandomPassphrase();
+      Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+      cipher.init( Cipher.ENCRYPT_MODE, pubk );
+      byte[] crypt = cipher.doFinal( new String(p).getBytes() );
+      FileOutputStream out = new FileOutputStream("demo/windowsprotectedpasswords.bin");
+      out.write(crypt);
+      out.close();
+
+      return p;
+    }
+    catch (Exception e)
+    {
+      System.out.println( "Unable to create Windows password guard." );
+      e.printStackTrace(System.out);
+      return null;
+    }
+
+  }
+  
+  
   /**
    * Run the demo.
    * @param args No arguments used.
@@ -164,7 +232,7 @@ public class GenKeys
           String[] args)
           throws Exception
   {
-    GenKeys inst = new GenKeys();
+    AliceBobCharlieGenKeys inst = new AliceBobCharlieGenKeys();
     inst.run();
   }
 }
