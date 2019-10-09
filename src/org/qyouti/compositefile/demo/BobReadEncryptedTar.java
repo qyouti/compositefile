@@ -18,7 +18,6 @@ package org.qyouti.compositefile.demo;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.security.NoSuchProviderException;
 import java.security.Security;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -50,13 +49,14 @@ public class BobReadEncryptedTar
       File file = new File("demo/mydataenc.tar");
 
       
-      File aliceseckeyfile = new File( "demo/bob_secring.gpg" );
-      File alicepubkeyfile = new File( "demo/bob_pubring.gpg" );
+      File bobseckeyfile = new File( "demo/bob_secring.gpg" );
+      File bobpubkeyfile = new File( "demo/bob_pubring.gpg" );
       
-      KeyUtil ku = new KeyUtil( aliceseckeyfile, alicepubkeyfile );
+      KeyUtil ku = new KeyUtil( bobseckeyfile, bobpubkeyfile );
       PGPPrivateKey  prikey = ku.getPrivateKey("bob", "bob".toCharArray() );      
-      PGPPublicKey  pubkey = ku.getPublicKey("bob");      
-      EncryptedCompositeFileUser bob = new EncryptedCompositeFileUser("bob",prikey,pubkey );
+      PGPPublicKey  pubkey = ku.getPublicKey("bob");
+      
+      EncryptedCompositeFileUser bob = new EncryptedCompositeFileUser("bob",prikey,pubkey, ku.pubringcoll );
       EncryptedCompositeFile compfile = EncryptedCompositeFile.getCompositeFile(file);
       
       in=compfile.getDecryptingInputStream(bob,"little.txt.gpg");

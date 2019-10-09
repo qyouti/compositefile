@@ -31,6 +31,7 @@ import java.util.Iterator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.bouncycastle.bcpg.CompressionAlgorithmTags;
+import org.bouncycastle.bcpg.HashAlgorithmTags;
 import org.bouncycastle.openpgp.PGPCompressedData;
 import org.bouncycastle.openpgp.PGPCompressedDataGenerator;
 import org.bouncycastle.openpgp.PGPEncryptedData;
@@ -39,12 +40,19 @@ import org.bouncycastle.openpgp.PGPEncryptedDataList;
 import org.bouncycastle.openpgp.PGPException;
 import org.bouncycastle.openpgp.PGPLiteralData;
 import org.bouncycastle.openpgp.PGPLiteralDataGenerator;
+import org.bouncycastle.openpgp.PGPOnePassSignature;
 import org.bouncycastle.openpgp.PGPOnePassSignatureList;
 import org.bouncycastle.openpgp.PGPPBEEncryptedData;
 import org.bouncycastle.openpgp.PGPPublicKey;
 import org.bouncycastle.openpgp.PGPPublicKeyEncryptedData;
+import org.bouncycastle.openpgp.PGPSignature;
+import org.bouncycastle.openpgp.PGPSignatureGenerator;
+import org.bouncycastle.openpgp.PGPSignatureList;
+import org.bouncycastle.openpgp.PGPSignatureSubpacketGenerator;
 import org.bouncycastle.openpgp.PGPUtil;
 import org.bouncycastle.openpgp.jcajce.JcaPGPObjectFactory;
+import org.bouncycastle.openpgp.operator.bc.BcPGPContentSignerBuilder;
+import org.bouncycastle.openpgp.operator.bc.BcPGPContentVerifierBuilderProvider;
 import org.bouncycastle.openpgp.operator.jcajce.JcaPGPDigestCalculatorProviderBuilder;
 import org.bouncycastle.openpgp.operator.jcajce.JcePBEDataDecryptorFactoryBuilder;
 import org.bouncycastle.openpgp.operator.jcajce.JcePBEKeyEncryptionMethodGenerator;
@@ -171,17 +179,18 @@ public class EncryptedCompositeFile
   }
   
   /**
-   * Retrieves an output stream for a new entry in the composite file.  As data is sent to
-   * the stream it is encrypted using a symmetric key algorithm locked with this archive's passphrase
-   * and a random salt.
+   * Retrieves an output stream for a new entry in the composite file.As data is sent to
+ the stream it is encrypted using a symmetric key algorithm locked with this archive's passphrase
+ and a random salt.
    * 
    * @param eu
    * @param name The relative path of the entry.
    * @param replace Should the operation go ahead if there is already an entry with the given name?
+   * @param sign
    * @return The stream to write 'plain text' to.
    * @throws IOException 
    */
-  public synchronized OutputStream getEncryptingOutputStream(EncryptedCompositeFileUser eu, String name, boolean replace)
+  public synchronized OutputStream getEncryptingOutputStream(EncryptedCompositeFileUser eu, String name, boolean replace, boolean sign )
           throws IOException
   {
     if ( eu.getPassPhraseStatus(getCanonicalPath()) != PASS_KNOWN )
@@ -192,8 +201,12 @@ public class EncryptedCompositeFile
     
     OutputStream taroutput = super.getOutputStream(name, replace);
 
-    PGPEncryptedDataGenerator encryptiongen = new PGPEncryptedDataGenerator(new JcePGPDataEncryptorBuilder(PGPEncryptedData.CAST5)
-            .setWithIntegrityPacket(true).setSecureRandom(new SecureRandom()).setProvider("BC"));
+    PGPEncryptedDataGenerator encryptiongen = new PGPEncryptedDataGenerator(
+            new JcePGPDataEncryptorBuilder(PGPEncryptedData.CAST5)
+              .setWithIntegrityPacket( !sign )   // no integrity check if there is a full signature
+              .setSecureRandom(new SecureRandom())
+              .setProvider("BC")
+    );
     encryptiongen.addMethod(new JcePBEKeyEncryptionMethodGenerator(passphrase).setProvider("BC"));
     OutputStream encryptedoutput;
     try
@@ -205,9 +218,35 @@ public class EncryptedCompositeFile
     }
     PGPLiteralDataGenerator literalgen = new PGPLiteralDataGenerator();
     PGPCompressedDataGenerator compressiongen = new PGPCompressedDataGenerator(CompressionAlgorithmTags.ZIP);
-    OutputStream literalout = literalgen.open(compressiongen.open(encryptedoutput), PGPLiteralData.BINARY, name, new Date(System.currentTimeMillis()), new byte[1 << 16]);
-
-    return new EncryptedOutputWrapper(taroutput, encryptedoutput, compressiongen, literalout);
+    OutputStream compressingout = compressiongen.open(encryptedoutput);
+    
+    PGPSignatureGenerator siggen = null;
+    if ( sign )
+    {
+      try
+      {
+        BcPGPContentSignerBuilder signerbuilder = new BcPGPContentSignerBuilder(eu.pgppublickey.getAlgorithm(), HashAlgorithmTags.SHA256);
+        siggen = new PGPSignatureGenerator(signerbuilder);
+        siggen.init( PGPSignature.BINARY_DOCUMENT, eu.getPgpprivatekey() );
+        PGPSignatureSubpacketGenerator subpackgen = new PGPSignatureSubpacketGenerator();
+        subpackgen.setSignerUserID( false, eu.getKeyalias() );
+        siggen.setHashedSubpackets( subpackgen.generate() );
+        // create the header that must precede the data and send it to 
+        // the tar entry before the compressed, encrypted content
+        siggen.generateOnePassVersion(false).encode(compressingout);
+      }
+      catch (PGPException ex)
+      {
+        Logger.getLogger(EncryptedCompositeFile.class.getName()).log(Level.SEVERE, null, ex);
+        throw new IOException("Unable to initialise encrypted output.", ex);
+      }
+    }    
+    
+    
+    
+    OutputStream literalout = literalgen.open(compressingout, PGPLiteralData.BINARY, name, new Date(System.currentTimeMillis()), new byte[1 << 16]);
+    
+    return new EncryptedOutputWrapper(taroutput, encryptedoutput, compressingout, compressiongen, siggen, literalout);
   }
 
   /**
@@ -221,9 +260,10 @@ public class EncryptedCompositeFile
   }
 
   /**
-   * Get input stream to read data from an entry. The data will be decrypted before being delivered to the
-   * stream.
+   * Get input stream to read data from an entry.The data will be decrypted before being delivered to the
+ stream.
    * 
+   * @param eu
    * @param name
    * @return
    * @throws IOException 
@@ -252,10 +292,14 @@ public class EncryptedCompositeFile
       JcaPGPObjectFactory pgpF = new JcaPGPObjectFactory(in);
       PGPEncryptedDataList enc;
       Object o = pgpF.nextObject();
+      System.out.println( "o = " + o.getClass() );
       if (o instanceof PGPEncryptedDataList)
         enc = (PGPEncryptedDataList) o;
       else
+      {
         enc = (PGPEncryptedDataList) pgpF.nextObject();
+        System.out.println( "o = " + o.getClass() );
+      }
       inputwrapper.pbe = (PGPPBEEncryptedData) enc.get(0);
       inputwrapper.clearin = inputwrapper.pbe.getDataStream(
               new JcePBEDataDecryptorFactoryBuilder(
@@ -263,15 +307,34 @@ public class EncryptedCompositeFile
               ).setProvider("BC").build(passphrase) );
       JcaPGPObjectFactory pgpFact = new JcaPGPObjectFactory(inputwrapper.clearin);
       o = pgpFact.nextObject();
+      System.out.println( "Object class " + o.getClass().toString() );
       if (o instanceof PGPCompressedData)
       {
         PGPCompressedData cData = (PGPCompressedData) o;        
         pgpFact = new JcaPGPObjectFactory(cData.getDataStream());
         o = pgpFact.nextObject();
-      } 
+      }
+      System.out.println( "Object class " + o.getClass().toString() );
+      
+      if ( o instanceof PGPOnePassSignatureList )
+      {
+        inputwrapper.onepasssiglist = (PGPOnePassSignatureList)o;
+        if ( inputwrapper.onepasssiglist.size() != 1 )
+          throw new IOException( "Invalid Signature Format in data file." );
+        inputwrapper.onepasssignature = inputwrapper.onepasssiglist.get(0);
+        long keyid = inputwrapper.onepasssignature.getKeyID();
+        PGPPublicKey signerpubkey = eu.getOtherPGPPublicKey(keyid);
+        if ( signerpubkey == null )
+          throw new IOException( "Unable to find public key used to sign this data file." );
+        BcPGPContentVerifierBuilderProvider converbuildprov = new BcPGPContentVerifierBuilderProvider();
+        inputwrapper.onepasssignature.init( converbuildprov, signerpubkey );
+        o = pgpFact.nextObject();
+        System.out.println( "Object class " + o.getClass().toString() );
+      }
+      
       PGPLiteralData ld = (PGPLiteralData) o;
       inputwrapper.literalin = ld.getInputStream();
-      
+      inputwrapper.pgpobjectfactory = pgpFact;
       return inputwrapper;
       
     } catch (PGPException ex)
@@ -516,6 +579,11 @@ public class EncryptedCompositeFile
     InputStream clearin;
     InputStream tarin;
     PGPPBEEncryptedData pbe;    
+    PGPOnePassSignatureList onepasssiglist;
+    PGPOnePassSignature onepasssignature;
+    JcaPGPObjectFactory pgpobjectfactory;
+    
+    long sigcount=0;
     
     @Override
     public boolean markSupported()
@@ -559,6 +627,31 @@ public class EncryptedCompositeFile
       }
       closeInputStream();
       literalin.close();
+
+      if ( onepasssignature != null )
+      {
+        Object o = pgpobjectfactory.nextObject();
+        System.out.println( "\n\nObject class following literal data object." + o.getClass().toString() );
+        if ( o instanceof PGPSignatureList )
+        {
+          PGPSignatureList siglist = (PGPSignatureList)o;
+          if ( siglist.size() != 1 )
+            throw new IOException( "Problem attempting to verify the digital signature on this data file." );
+          PGPSignature signature = siglist.get(0);
+          System.out.println( "Verifying " + sigcount + " bytes of data" );
+          try
+          {
+            boolean verified = onepasssignature.verify(signature);
+            System.out.println( "Signature verification " + verified );
+          }
+          catch (PGPException ex)
+          {
+            System.out.println( "Signature verification crashed"  );
+            Logger.getLogger(EncryptedCompositeFile.class.getName()).log(Level.SEVERE, null, ex);
+          }
+        }
+      }
+
     }
 
     @Override
@@ -576,19 +669,37 @@ public class EncryptedCompositeFile
     @Override
     public int read(byte[] b, int off, int len) throws IOException
     {
-      return literalin.read(b, off, len); 
+      int n = literalin.read(b, off, len);
+      if ( onepasssignature != null )
+      {
+        onepasssignature.update(b, off, n);
+        sigcount+=n;
+      }
+      return n;
     }
 
     @Override
     public int read(byte[] b) throws IOException
     {
-      return read(b,0,b.length); 
+      int n = literalin.read(b);
+      if ( onepasssignature != null )
+      {
+        onepasssignature.update(b, 0, n);
+        sigcount+=n;
+      }
+      return n;
     }
 
     @Override
     public int read() throws IOException
     {
-      return literalin.read();
+      int b = literalin.read();
+      if ( onepasssignature != null && b>=0 )
+      {
+        onepasssignature.update((byte)b);
+        sigcount+=1;
+      }
+      return b;
     }
     
   }
@@ -605,15 +716,25 @@ public class EncryptedCompositeFile
   {
     OutputStream taroutput;
     OutputStream encryptedoutput;
+    OutputStream compressingoutput;
     PGPCompressedDataGenerator compressiongen;
+    PGPSignatureGenerator siggen;
     OutputStream literaloutput;
+    long sigcount=0;
 
-    public EncryptedOutputWrapper(OutputStream taroutput, OutputStream encryptedoutput,
-            PGPCompressedDataGenerator compressiongen, OutputStream literaloutput)
+    public EncryptedOutputWrapper(
+            OutputStream taroutput, 
+            OutputStream encryptedoutput,
+            OutputStream compressingoutput, 
+            PGPCompressedDataGenerator compressiongen, 
+            PGPSignatureGenerator siggen, 
+            OutputStream literaloutput)
     {
       this.taroutput = taroutput;
       this.encryptedoutput = encryptedoutput;
+      this.compressingoutput = compressingoutput;
       this.compressiongen = compressiongen;
+      this.siggen = siggen;
       this.literaloutput = literaloutput;
     }
 
@@ -623,9 +744,22 @@ public class EncryptedCompositeFile
     {
       flush();
       literaloutput.close();   // complete the literal data packet
+      // now the encrypted data block has been flushed to taroutput
+      // generate the signature packet and append it to stream.
+      if ( siggen != null )
+      {
+        System.out.println( "Signing " + sigcount + " bytes of data." );
+        try {
+          siggen.generate().encode(compressingoutput);          
+        }
+        catch (PGPException ex) {
+          Logger.getLogger(EncryptedCompositeFile.class.getName()).log(Level.SEVERE, null, ex);
+          throw new IOException( "Problem attempting to complete digital signature.", ex );
+        }
+      }
+      compressingoutput.close();
       compressiongen.close();  // complete the enclosing compression packet
       encryptedoutput.close(); // complete the enclosing encryption packet
-
       taroutput.close();       // now close the taroutput which encloses the whole lot.
     }
 
@@ -641,6 +775,11 @@ public class EncryptedCompositeFile
             throws IOException
     {
       literaloutput.write(b, off, len);
+      if ( siggen != null )
+      {
+        siggen.update(b, off, len);
+        sigcount += len;
+      }
     }
 
     @Override
@@ -648,6 +787,11 @@ public class EncryptedCompositeFile
             throws IOException
     {
       literaloutput.write(b, 0, b.length);
+      if ( siggen != null )
+      {
+        siggen.update(b, 0, b.length);
+        sigcount += b.length;
+      }
     }
 
     @Override
@@ -655,6 +799,11 @@ public class EncryptedCompositeFile
             throws IOException
     {
       literaloutput.write(b);
+      if ( siggen != null )
+      {
+        siggen.update((byte)b);
+        sigcount += 1;
+      }
     }
 
   }

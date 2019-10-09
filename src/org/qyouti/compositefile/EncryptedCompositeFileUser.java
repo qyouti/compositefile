@@ -18,8 +18,10 @@ package org.qyouti.compositefile;
 import java.security.PrivateKey;
 import java.security.Provider;
 import java.util.HashMap;
+import org.bouncycastle.openpgp.PGPException;
 import org.bouncycastle.openpgp.PGPPrivateKey;
 import org.bouncycastle.openpgp.PGPPublicKey;
+import org.bouncycastle.openpgp.PGPPublicKeyRingCollection;
 
 /**
  *
@@ -30,14 +32,21 @@ public class EncryptedCompositeFileUser
   String keyalias;
   PGPPrivateKey pgpprivatekey;
   PGPPublicKey pgppublickey;
+  PGPPublicKeyRingCollection pgppubkeyringcoll;
   
   HashMap<String,PassPhraseStatus> passphrasestatusmap = new HashMap<>();
 
-  public EncryptedCompositeFileUser(String keyalias, PGPPrivateKey pgpprivatekey, PGPPublicKey pgppublickey)
+  public EncryptedCompositeFileUser(
+          String keyalias, 
+          PGPPrivateKey pgpprivatekey, 
+          PGPPublicKey pgppublickey, 
+          PGPPublicKeyRingCollection pgppubkeyringcoll 
+  )
   {
     this.keyalias = keyalias;
     this.pgpprivatekey = pgpprivatekey;
     this.pgppublickey = pgppublickey;
+    this.pgppubkeyringcoll = pgppubkeyringcoll;
   }
 
   public String getKeyalias()
@@ -53,6 +62,13 @@ public class EncryptedCompositeFileUser
   public PGPPublicKey getPgppublickey()
   {
     return pgppublickey;
+  }
+  
+  public PGPPublicKey getOtherPGPPublicKey( long id ) throws PGPException
+  {
+    if ( pgppubkeyringcoll == null )
+      return null;
+    return pgppubkeyringcoll.getPublicKey( id );
   }
   
   public void setPassPhraseStatus( String canonicalpath, int status )

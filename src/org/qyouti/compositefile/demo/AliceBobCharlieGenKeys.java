@@ -15,11 +15,8 @@
  */
 package org.qyouti.compositefile.demo;
 
-import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.math.BigInteger;
 import java.security.InvalidKeyException;
 import java.security.KeyPair;
@@ -33,7 +30,6 @@ import java.util.Date;
 import java.util.UUID;
 import javax.crypto.Cipher;
 
-import org.bouncycastle.bcpg.ArmoredOutputStream;
 import org.bouncycastle.bcpg.HashAlgorithmTags;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openpgp.PGPEncryptedData;
@@ -151,15 +147,21 @@ public class AliceBobCharlieGenKeys
 
     char[] charliepassword = makeWindowsPasswordGuard();
     
+    // Create key rings for all the demo users
     createKeyRings();
+    
+    // Create key pairs
     KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA", "BC");
     kpg.initialize(2048);
     KeyPair alicekp = kpg.generateKeyPair();
     kpg.initialize(2048);
     KeyPair bobkp = kpg.generateKeyPair();
+    
+    // Put keys pairs in OpenPGP format and put in OpenPGP key rings
     exportKeyPair( 0, alicekp, "alice", "alice".toCharArray() );
     exportKeyPair( 1, bobkp, "bob", "bob".toCharArray() );
     
+    // Do charlie's keys if we are on windows
     if ( charliepassword != null )
     {
       kpg.initialize(2048);
@@ -167,6 +169,7 @@ public class AliceBobCharlieGenKeys
       exportKeyPair( 2, charliekp, "charlie", charliepassword );
     }
     
+    // Save the key rings to files
     saveKeyRings();
   }
 
