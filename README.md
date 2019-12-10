@@ -1,3 +1,4 @@
+Ideas from this project have been rolled into qyouti/quipto.
 # compositefile
 Java library, built on Apache Commons Compress that provides a kind of tar archive which is partially random access.
 # Requirement
